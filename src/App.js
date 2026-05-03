@@ -1,14 +1,35 @@
-import React, { useState } from "react";
+// =============================
+// ARQUIVO: src/App.js
+// =============================
+
+import React, { useEffect, useState } from "react";
+import { auth, db } from "./firebase";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 
 export default function App() {
   const [logged, setLogged] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const [page, setPage] = useState("dashboard");
-  const [appointments, setAppointments] = useState([
-    { id: 1, time: "09:00", name: "Carlos", service: "Corte", status: "Confirmado" },
-    { id: 2, time: "10:00", name: "João", service: "Barba", status: "Pendente" },
-    { id: 3, time: "14:00", name: "Lucas", service: "Combo", status: "Confirmado" },
-  ]);
-
+  const [appointments, setAppointments] = useState([]);
   const [form, setForm] = useState({ name: "", phone: "", service: "Corte", time: "" });
 
   const services = [
@@ -20,37 +41,144 @@ export default function App() {
 
   const times = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
 
-  function createAppointment() {
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setLogged(true);
+        setCurrentUser(user);
+        loadAppointments(user.uid);
+      } else {
+        setLogged(false);
+        setCurrentUser(null);
+        setAppointments([]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  async function loginUser() {
+    if (!email || !password) {
+      alert("Preencha email e senha");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      alert("Erro ao entrar: " + traduzirErroFirebase(error.code));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function registerUser() {
+    if (!email || !password) {
+      alert("Preencha email e senha");
+      return;
+    }
+
+    if (password.length < 6) {
+      alert("A senha precisa ter pelo menos 6 caracteres");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await createUserWithEmailAndPassword(auth, email, password);
+      alert("Conta criada com sucesso!");
+    } catch (error) {
+      alert("Erro ao cadastrar: " + traduzirErroFirebase(error.code));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function logoutUser() {
+    await signOut(auth);
+    setEmail("");
+    setPassword("");
+  }
+
+  async function loadAppointments(uidParam) {
+    const uid = uidParam || currentUser?.uid;
+    if (!uid) return;
+
+    try {
+      const appointmentsRef = collection(db, "appointments");
+      const q = query(
+        appointmentsRef,
+        where("ownerId", "==", uid),
+        orderBy("createdAt", "desc")
+      );
+      const querySnapshot = await getDocs(q);
+      const list = [];
+
+      querySnapshot.forEach((document) => {
+        list.push({ id: document.id, ...document.data() });
+      });
+
+      setAppointments(list);
+    } catch (error) {
+      alert("Erro ao carregar agendamentos: " + error.message);
+    }
+  }
+
+  async function createAppointment() {
     if (!form.name || !form.time) {
       alert("Preencha nome e horário");
       return;
     }
 
-    const newAppointment = {
-      id: Date.now(),
-      time: form.time,
-      name: form.name,
-      phone: form.phone,
-      service: form.service,
-      status: "Pendente",
-    };
+    if (!currentUser) {
+      alert("Você precisa estar logado");
+      return;
+    }
 
-    setAppointments([...appointments, newAppointment]);
-    setForm({ name: "", phone: "", service: "Corte", time: "" });
-    alert("Agendamento criado com sucesso!");
-    setPage("dashboard");
+    try {
+      const newAppointment = {
+        name: form.name,
+        phone: form.phone,
+        service: form.service,
+        time: form.time,
+        status: "Pendente",
+        ownerId: currentUser.uid,
+        ownerEmail: currentUser.email,
+        createdAt: Date.now(),
+      };
+
+      await addDoc(collection(db, "appointments"), newAppointment);
+      setForm({ name: "", phone: "", service: "Corte", time: "" });
+      await loadAppointments(currentUser.uid);
+      alert("Agendamento salvo no banco com sucesso!");
+      setPage("dashboard");
+    } catch (error) {
+      alert("Erro ao salvar agendamento: " + error.message);
+    }
   }
 
-  function removeAppointment(id) {
-    setAppointments(appointments.filter((item) => item.id !== id));
+  async function removeAppointment(id) {
+    const confirmDelete = window.confirm("Tem certeza que deseja excluir este agendamento?");
+    if (!confirmDelete) return;
+
+    try {
+      await deleteDoc(doc(db, "appointments", id));
+      await loadAppointments();
+    } catch (error) {
+      alert("Erro ao excluir: " + error.message);
+    }
   }
 
-  function confirmAppointment(id) {
-    setAppointments(
-      appointments.map((item) =>
-        item.id === id ? { ...item, status: "Confirmado" } : item
-      )
-    );
+  async function confirmAppointment(id) {
+    try {
+      await updateDoc(doc(db, "appointments", id), {
+        status: "Confirmado",
+      });
+      await loadAppointments();
+    } catch (error) {
+      alert("Erro ao confirmar: " + error.message);
+    }
   }
 
   if (!logged) {
@@ -62,14 +190,30 @@ export default function App() {
           <h1 style={styles.loginTitle}>NextJumpx</h1>
           <p style={styles.subtitle}>Automação premium para barbearias</p>
 
-          <input style={styles.input} placeholder="Usuário" defaultValue="admin" />
-          <input style={styles.input} type="password" placeholder="Senha" defaultValue="159753" />
+          <input
+            style={styles.input}
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
 
-          <button style={styles.primaryButton} onClick={() => setLogged(true)}>
-            Entrar no sistema
+          <input
+            style={styles.input}
+            type="password"
+            placeholder="Senha"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+
+          <button style={styles.primaryButton} onClick={loginUser} disabled={loading}>
+            {loading ? "Entrando..." : "Entrar no sistema"}
           </button>
 
-          <p style={styles.smallText}>Acesso demo: admin / 159753</p>
+          <button style={styles.secondaryButton} onClick={registerUser} disabled={loading}>
+            Criar conta
+          </button>
+
+          <p style={styles.smallText}>Login real conectado ao Firebase</p>
         </div>
       </div>
     );
@@ -82,7 +226,7 @@ export default function App() {
           <div style={styles.brandIcon}>✂</div>
           <div>
             <h2 style={{ margin: 0 }}>NextJumpx</h2>
-            <p style={styles.smallText}>Barber SaaS</p>
+            <p style={styles.smallText}>{currentUser?.email}</p>
           </div>
         </div>
 
@@ -92,7 +236,7 @@ export default function App() {
         <MenuButton active={page === "agendar"} onClick={() => setPage("agendar")} text="Link de Agendamento" />
         <MenuButton active={page === "admin"} onClick={() => setPage("admin")} text="Admin Master" />
 
-        <button style={styles.logout} onClick={() => setLogged(false)}>Sair</button>
+        <button style={styles.logout} onClick={logoutUser}>Sair</button>
       </aside>
 
       <main style={styles.main}>
@@ -101,20 +245,24 @@ export default function App() {
             <Header title="Dashboard NextJumpx" text="Controle sua barbearia em um painel premium." />
 
             <div style={styles.cardsGrid}>
-              <Card title="Clientes" value="120" detail="+18 este mês" />
-              <Card title="Agendamentos" value={appointments.length} detail="hoje" />
+              <Card title="Clientes" value="120" detail="demo" />
+              <Card title="Agendamentos" value={appointments.length} detail="salvos no banco" />
               <Card title="Faturamento" value="R$ 2.300" detail="estimado" />
               <Card title="Confirmações" value="92%" detail="presença" />
             </div>
 
-            <div style={styles.panel}>              
+            <div style={styles.panel}>
               <div style={styles.panelHeader}>
                 <div>
                   <h2 style={styles.sectionTitle}>Agenda de hoje</h2>
-                  <p style={styles.muted}>Próximos horários e status dos clientes.</p>
+                  <p style={styles.muted}>Próximos horários salvos no Firebase.</p>
                 </div>
                 <button style={styles.primarySmall} onClick={() => setPage("agendar")}>+ Novo</button>
               </div>
+
+              {appointments.length === 0 && (
+                <p style={styles.emptyText}>Nenhum agendamento ainda. Clique em “+ Novo”.</p>
+              )}
 
               {appointments.map((item) => (
                 <Appointment
@@ -194,15 +342,25 @@ export default function App() {
               </select>
 
               <div style={styles.timesGridSmall}>
-                {times.map((time) => (
-                  <button
-                    key={time}
-                    style={form.time === time ? styles.selectedTime : styles.timeButton}
-                    onClick={() => setForm({ ...form, time })}
-                  >
-                    {time}
-                  </button>
-                ))}
+                {times.map((time) => {
+                  const busy = appointments.find((a) => a.time === time);
+                  return (
+                    <button
+                      key={time}
+                      disabled={!!busy}
+                      style={
+                        busy
+                          ? styles.disabledTime
+                          : form.time === time
+                          ? styles.selectedTime
+                          : styles.timeButton
+                      }
+                      onClick={() => setForm({ ...form, time })}
+                    >
+                      {busy ? `${time} ocupado` : time}
+                    </button>
+                  );
+                })}
               </div>
 
               <button style={styles.primaryButton} onClick={createAppointment}>
@@ -217,10 +375,10 @@ export default function App() {
             <Header title="Admin Master" text="Seu controle majoritário de clientes, planos e acessos." />
 
             <div style={styles.cardsGrid}>
-              <Card title="Clientes SaaS" value="36" detail="assinantes" />
-              <Card title="MRR" value="R$ 6.392" detail="mensal" />
-              <Card title="Ativos" value="32" detail="liberados" />
-              <Card title="Bloqueados" value="4" detail="sem pagamento" />
+              <Card title="Clientes SaaS" value="36" detail="demo" />
+              <Card title="MRR" value="R$ 6.392" detail="demo" />
+              <Card title="Ativos" value="32" detail="demo" />
+              <Card title="Bloqueados" value="4" detail="demo" />
             </div>
 
             <div style={styles.panel}>
@@ -234,6 +392,19 @@ export default function App() {
       </main>
     </div>
   );
+}
+
+function traduzirErroFirebase(code) {
+  const errors = {
+    "auth/email-already-in-use": "este email já está cadastrado.",
+    "auth/invalid-email": "email inválido.",
+    "auth/weak-password": "senha fraca. Use pelo menos 6 caracteres.",
+    "auth/user-not-found": "usuário não encontrado.",
+    "auth/wrong-password": "senha incorreta.",
+    "auth/invalid-credential": "email ou senha incorretos.",
+  };
+
+  return errors[code] || code;
 }
 
 function Header({ title, text }) {
@@ -274,7 +445,7 @@ function Appointment({ item, onConfirm, onDelete }) {
       </div>
       <div style={{ flex: 1 }}>
         <h3 style={{ margin: 0 }}>{item.name}</h3>
-        <p style={styles.muted}>{item.service}</p>
+        <p style={styles.muted}>{item.service} {item.phone ? `• ${item.phone}` : ""}</p>
       </div>
       <span style={item.status === "Confirmado" ? styles.statusOk : styles.statusPending}>
         {item.status}
@@ -375,7 +546,18 @@ const styles = {
     cursor: "pointer",
     marginTop: 12,
   },
-  smallText: { color: "#777", fontSize: 12 },
+  secondaryButton: {
+    width: "100%",
+    padding: 15,
+    borderRadius: 16,
+    border: "1px solid rgba(0,255,136,0.35)",
+    background: "transparent",
+    color: "#00ff88",
+    fontWeight: "bold",
+    cursor: "pointer",
+    marginTop: 12,
+  },
+  smallText: { color: "#777", fontSize: 12, wordBreak: "break-word" },
   app: {
     minHeight: "100vh",
     display: "flex",
@@ -442,6 +624,7 @@ const styles = {
   pageTitle: { fontSize: 42, margin: "4px 0" },
   neonText: { color: "#00ff88", fontWeight: "bold" },
   muted: { color: "#aaa", margin: "4px 0" },
+  emptyText: { color: "#aaa", marginTop: 18, padding: 18, background: "#090909", borderRadius: 16 },
   cardsGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
@@ -591,6 +774,14 @@ const styles = {
     cursor: "pointer",
     fontWeight: "bold",
   },
+  disabledTime: {
+    padding: 12,
+    borderRadius: 14,
+    border: "1px solid #333",
+    background: "#151515",
+    color: "#666",
+    cursor: "not-allowed",
+  },
   adminRow: {
     display: "grid",
     gridTemplateColumns: "1fr 140px 120px",
@@ -603,3 +794,49 @@ const styles = {
     marginTop: 12,
   },
 };
+
+
+// =============================
+// ARQUIVO: src/firebase.js
+// =============================
+
+// Crie este arquivo separadamente em src/firebase.js e cole apenas o conteúdo abaixo:
+
+/*
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyADg5nYfj49vG2y08zFBaUNHoxatpXuiJ8",
+  authDomain: "nextjumpx.firebaseapp.com",
+  projectId: "nextjumpx",
+  storageBucket: "nextjumpx.firebasestorage.app",
+  messagingSenderId: "244868405828",
+  appId: "1:244868405828:web:e2d5d05d2d477494e83a11",
+  measurementId: "G-CL6WQGKRRC"
+};
+
+const app = initializeApp(firebaseConfig);
+
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+*/
+
+
+// =============================
+// ARQUIVO: vercel.json
+// =============================
+
+// Crie este arquivo na raiz do projeto e cole apenas o conteúdo abaixo:
+
+/*
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+*/
