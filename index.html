@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZenBarber</title>
+  <meta name="theme-color" content="#0d0d10" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="ZenBarber" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <link rel="stylesheet" href="css/style.css?v=20260606-seguranca-etapa3" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js?v=github-audit-safe"></script>
+</head>
+<body>
+  <div id="toast"></div>
+  <div id="root"></div>
+
+  <script src="js/core.js?v=20260606-seguranca-etapa3"></script>
+  <script src="js/modules/auth.js?v=20260606-seguranca-etapa3"></script>
+  <script src="js/modules/dashboard.js?v=20260606-seguranca-etapa3"></script>
+  <script src="js/modules/components.js?v=20260606-seguranca-etapa3"></script>
+  <script src="js/modules/cadastros.js?v=20260606-seguranca-etapa3"></script>
+  <script src="js/modules/agenda.js?v=20260606-seguranca-etapa3"></script>
+  <script src="js/modules/clientesFixos.js?v=20260606-seguranca-etapa3"></script>
+  <script src="js/modules/relatorios.js?v=20260606-seguranca-etapa3"></script>
+  <script src="js/modules/admin.js?v=20260606-seguranca-etapa3"></script>
+  <script src="js/modules/meuNegocio.js?v=20260607-meu-negocio"></script>
+  <script src="js/modules/agendamentoPublico.js?v=20260606-seguranca-etapa3"></script>
+  <script src="js/bootstrap.js?v=20260606-seguranca-etapa3"></script>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("/sw.js").catch(function (error) {
+          console.warn("ZenBarber PWA: service worker não registrado", error);
+        });
+      });
+    }
+  </script>
+</body>
+</html>

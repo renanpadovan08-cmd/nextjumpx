@@ -1,0 +1,26 @@
+# Dependências/build
+node_modules/
+dist/
+build/
+.cache/
+.netlify/
+
+# Ambiente e segredos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Backups locais que podem conter segredos antigos
+*.bak
+*.backup
+*.old
+backup-*.json
+
+# Sistema operacional/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
