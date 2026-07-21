@@ -138,7 +138,7 @@ class NextJumpXLandingScreen extends StatelessWidget {
                                   )
                                 : Row(
                                     crossAxisAlignment:
-                                        CrossAxisAlignment.stretch,
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Expanded(child: cards.first),
                                       const SizedBox(width: 28),
