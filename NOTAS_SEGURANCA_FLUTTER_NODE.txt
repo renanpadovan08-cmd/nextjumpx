@@ -1,0 +1,63 @@
+SEGURANÇA — Flutter + Node.js
+
+Resumo
+
+A migração deixa o sistema mais seguro do que manter as telas e 
+regras no JavaScript do navegador, porque o navegador passa a 
+ser apenas a interface. A autorização e as regras sensíveis 
+ficam na API Node.js.
+
+O que melhorou
+
+- Regras no servidor:
+  Permissões, cadastros, agenda, pagamentos e demais validações 
+  podem ser aplicados no Node.js. O usuário não consegue tornar
+  uma regra segura apenas alterando o código visual no navegador.
+
+- Segredos fora do frontend:
+  JWT_SECRET, SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY são exigidos
+  como variáveis de ambiente do backend. Eles não devem ser enviados
+  para o Flutter/Web.
+
+- Senhas protegidas:
+  O backend utiliza bcrypt com custo 12 para criar e atualizar 
+  hashes de senha. A senha não deve ficar gravada ou trafegar 
+  em texto puro no banco.
+
+- Sessão validada pela API:
+  O login gera JWT com validade de 8 horas e as rotas protegidas
+  validam o token no middleware antes de executar a ação.
+
+- Menor superfície de ataque visual:
+  O Flutter Web entrega o app compilado e o Flutter mobile entrega 
+  binário. Isso não substitui segurança no servidor, mas reduz a 
+  exposição direta do código antigo em JavaScript solto.
+
+- Separação mais organizada:
+  Flutter cuida das telas e Node.js cuida de autenticação, 
+  regras e banco. Isso facilita revisar, testar e corrigir 
+  segurança sem depender do frontend.
+
+Ponto importante
+
+Flutter não torna o sistema seguro sozinho. Em Web, o app ainda
+roda no navegador e pode ser inspecionado. Nenhuma permissão ou 
+regra importante pode depender apenas da tela Flutter.
+
+Próximos cuidados recomendados
+
+- Usar HTTPS em produção.
+- Configurar CORS apenas com os domínios oficiais.
+- Adicionar rate limit e bloqueio temporário contra tentativas 
+repetidas de login.
+- Validar todos os dados recebidos pela API (tipo, tamanho e permissão).
+- Garantir que cada consulta filtre pela barbearia/usuário autenticado.
+- Nunca colocar a chave service role do Supabase no Flutter ou em 
+repositório Git.
+- Para aplicativos mobile, preferir armazenamento seguro para o token.
+- Monitorar logs de acesso e manter dependências atualizadas.
+
+Conclusão
+
+O salto real de segurança é: o frontend mostra e solicita; 
+o backend decide e valida.
