@@ -1,0 +1,9 @@
+{
+  "name": "ZenBarber Pro",
+  "short_name": "ZenBarber",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#030712",
+  "theme_color": "#030712",
+  "description": "Gestão premium para barbearias"
+}

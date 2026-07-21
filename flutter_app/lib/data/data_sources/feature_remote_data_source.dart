@@ -1,0 +1,2 @@
+import '../../services/api.dart';
+class FeatureRemoteDataSource { const FeatureRemoteDataSource(this._api); final ApiClient _api; Future<List<dynamic>> fixedClients()=>_api.get('/fixed-clients').then((v)=>v as List<dynamic>); Future<void> pay(String id)=>_api.patch('/fixed-clients/payments/$id',{}); Future<dynamic> operations(int tab)=>_api.get(tab==0?'/business/goals':tab==1?'/units/requests':'/dashboard/summary'); Future<dynamic> publicBooking(String login)=>_api.get('/public/booking/$login'); }

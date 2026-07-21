@@ -1,27 +1,6 @@
 import 'package:flutter/material.dart';
+import '../core/theme/zen_colors.dart';
+import '../core/widgets/zen_card.dart';
 import '../core/view_models/app_view_model.dart';
-
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.viewModel});
-  final AppViewModel viewModel;
-  @override State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
-  final _login = TextEditingController();
-  final _password = TextEditingController();
-  final _form = GlobalKey<FormState>();
-  @override void dispose() { _login.dispose(); _password.dispose(); super.dispose(); }
-  Future<void> _submit() async { if (_form.currentState!.validate()) await widget.viewModel.login(_login.text, _password.text); }
-  @override Widget build(BuildContext context) => Scaffold(
-    body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Card(child: Padding(
-      padding: const EdgeInsets.all(28), child: Form(key: _form, child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Text('ZenBarber', style: Theme.of(context).textTheme.headlineMedium), const SizedBox(height: 8), const Text('Gestão completa para sua barbearia'), const SizedBox(height: 24),
-        TextFormField(controller: _login, decoration: const InputDecoration(labelText: 'Login'), validator: (value) => value!.trim().isEmpty ? 'Informe o login' : null), const SizedBox(height: 12),
-        TextFormField(controller: _password, obscureText: true, decoration: const InputDecoration(labelText: 'Senha'), validator: (value) => value!.isEmpty ? 'Informe a senha' : null),
-        if (widget.viewModel.error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(widget.viewModel.error!, style: TextStyle(color: Theme.of(context).colorScheme.error))), const SizedBox(height: 20),
-        FilledButton(onPressed: widget.viewModel.loading ? null : _submit, child: Text(widget.viewModel.loading ? 'Entrando...' : 'Entrar')),
-      ])),
-    )))),
-  );
-}
+class LoginScreen extends StatefulWidget { const LoginScreen({super.key,required this.viewModel}); final AppViewModel viewModel; @override State<LoginScreen> createState()=>_LoginScreenState(); }
+class _LoginScreenState extends State<LoginScreen>{final login=TextEditingController(),password=TextEditingController();final form=GlobalKey<FormState>();@override void dispose(){login.dispose();password.dispose();super.dispose();}Future<void>submit()async{if(form.currentState!.validate())await widget.viewModel.login(login.text,password.text);}@override Widget build(BuildContext c)=>Scaffold(body:Center(child:ConstrainedBox(constraints:const BoxConstraints(maxWidth:440),child:ZenCard(padding:const EdgeInsets.all(30),child:Form(key:form,child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[Container(width:58,height:58,alignment:Alignment.center,decoration:BoxDecoration(color:ZenColors.green,borderRadius:BorderRadius.circular(18)),child:const Icon(Icons.content_cut,color:Color(0xff06140a),size:30)),const SizedBox(height:20),Text('ZenBarber',style:Theme.of(c).textTheme.headlineSmall),const Text('Gestão premium para sua barbearia',style:TextStyle(color:ZenColors.muted)),const SizedBox(height:26),TextFormField(controller:login,decoration:const InputDecoration(labelText:'Login'),validator:(v)=>v!.trim().isEmpty?'Informe o login':null),const SizedBox(height:12),TextFormField(controller:password,obscureText:true,decoration:const InputDecoration(labelText:'Senha'),validator:(v)=>v!.isEmpty?'Informe a senha':null),if(widget.viewModel.error!=null)Padding(padding:const EdgeInsets.only(top:12),child:Text(widget.viewModel.error!,style:const TextStyle(color:ZenColors.red,fontWeight:FontWeight.w800))),const SizedBox(height:20),FilledButton(onPressed:widget.viewModel.loading?null:submit,child:Text(widget.viewModel.loading?'Entrando...':'Entrar no painel'))]))))));}

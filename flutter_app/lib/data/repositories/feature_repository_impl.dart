@@ -1,0 +1,2 @@
+import '../../domain/repositories/i_feature_repository.dart'; import '../data_sources/feature_remote_data_source.dart';
+class FeatureRepositoryImpl implements IFeatureRepository { const FeatureRepositoryImpl(this._source); final FeatureRemoteDataSource _source; @override Future<List<dynamic>> fixedClients()=>_source.fixedClients(); @override Future<void> pay(String id)=>_source.pay(id); @override Future<dynamic> operations(int tab)=>_source.operations(tab); @override Future<dynamic> publicBooking(String login)=>_source.publicBooking(login); }

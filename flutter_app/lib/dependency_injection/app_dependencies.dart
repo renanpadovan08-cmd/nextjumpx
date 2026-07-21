@@ -3,11 +3,13 @@ import '../data/data_sources/auth_remote_data_source.dart';
 import '../data/data_sources/barber_remote_data_source.dart';
 import '../data/data_sources/catalog_remote_data_source.dart';
 import '../data/data_sources/dashboard_remote_data_source.dart';
+import '../data/data_sources/feature_remote_data_source.dart';
 import '../data/repositories/appointment_repository_impl.dart';
 import '../data/repositories/auth_repository_impl.dart';
 import '../data/repositories/barber_repository_impl.dart';
 import '../data/repositories/catalog_repository_impl.dart';
 import '../data/repositories/dashboard_repository_impl.dart';
+import '../data/repositories/feature_repository_impl.dart';
 import '../services/api.dart';
 
 /// Composition root: data sources and repositories are wired once here.
@@ -18,6 +20,7 @@ class AppDependencies {
     barberRepository = BarberRepositoryImpl(BarberRemoteDataSource(api));
     appointmentRepository = AppointmentRepositoryImpl(AppointmentRemoteDataSource(api));
     dashboardRepository = DashboardRepositoryImpl(DashboardRemoteDataSource(api));
+    featureRepository = FeatureRepositoryImpl(FeatureRemoteDataSource(api));
   }
 
   static final instance = AppDependencies._();
@@ -27,4 +30,5 @@ class AppDependencies {
   late final BarberRepositoryImpl barberRepository;
   late final AppointmentRepositoryImpl appointmentRepository;
   late final DashboardRepositoryImpl dashboardRepository;
+  late final FeatureRepositoryImpl featureRepository;
 }

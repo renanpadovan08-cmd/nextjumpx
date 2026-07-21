@@ -22,4 +22,15 @@ backend_api/
 3. Rode `flutter pub get` dentro de `flutter_app`.
 4. Em dispositivo real, execute o Flutter com `--dart-define=API_BASE_URL=https://seu-dominio/api`.
 
+## Deploy Web
+
+O frontend de produção é gerado exclusivamente pelo Flutter:
+
+```powershell
+cd flutter_app
+flutter build web --release --dart-define=API_BASE_URL=https://seu-dominio/api
+```
+
+Publique o conteúdo de `flutter_app/build/web/`. Os arquivos HTML, CSS, JavaScript e PWA da raiz eram o frontend legado e foram removidos após a geração validada do build Flutter Web.
+
 O backend conserva as tabelas existentes (`barbers`, `services`, `appointments`) e passa a concentrar credenciais, senha com bcrypt, autorização por JWT e isolamento por barbearia.
