@@ -36,5 +36,12 @@ class AppViewModel extends ChangeNotifier {
     finally { loading = false; notifyListeners(); }
   }
 
+  Future<bool> signup({required String name,required String login,required String password,required String phone,required String shopName}) async {
+    error=null; loading=true; notifyListeners();
+    try { await _authRepository.signup(name:name,login:login,password:password,phone:phone,shopName:shopName); return true; }
+    on ApiException catch(exception) { error=exception.message; return false; }
+    finally { loading=false; notifyListeners(); }
+  }
+
   Future<void> logout() async { _api.setToken(null); await (await SharedPreferences.getInstance()).remove('token'); user = null; notifyListeners(); }
 }

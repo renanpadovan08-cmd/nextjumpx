@@ -9,4 +9,5 @@ class AuthRemoteDataSource {
     return (token: '${data['token']}', user: AuthUserDto.fromJson(data['user'] as Map<String, dynamic>));
   }
   Future<AuthUserDto> me() async => AuthUserDto.fromJson(await _api.get('/auth/me') as Map<String, dynamic>);
+  Future<AuthUserDto> signup({required String name,required String login,required String password,required String phone,required String shopName}) async => AuthUserDto.fromJson(await _api.post('/auth/signup', {'name':name,'login':login,'password':password,'phone':phone,'shopName':shopName}) as Map<String,dynamic>);
 }
