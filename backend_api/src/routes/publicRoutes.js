@@ -1,0 +1,1 @@
+import { Router } from 'express'; import * as c from '../controllers/publicController.js'; const router=Router(); router.get('/public/booking/:login',c.bookingContext); router.get('/public/availability',c.availability); router.post('/public/appointments',c.schedule); export default router;

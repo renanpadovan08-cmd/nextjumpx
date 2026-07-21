@@ -1,0 +1,16 @@
+import { Router } from 'express';
+import authRoutes from './authRoutes.js';
+import barberRoutes from './barberRoutes.js';
+import catalogRoutes from './catalogRoutes.js';
+import appointmentRoutes from './appointmentRoutes.js';
+import dashboardRoutes from './dashboardRoutes.js';
+import adminRoutes from './adminRoutes.js';
+import businessRoutes from './businessRoutes.js';
+import unitRoutes from './unitRoutes.js';
+import publicRoutes from './publicRoutes.js';
+import fixedClientRoutes from './fixedClientRoutes.js';
+
+const router = Router();
+router.get('/status', (_req, res) => res.json({ status: 'ok' }));
+router.use(publicRoutes, authRoutes, barberRoutes, catalogRoutes, appointmentRoutes, dashboardRoutes, adminRoutes, businessRoutes, unitRoutes, fixedClientRoutes);
+export default router;

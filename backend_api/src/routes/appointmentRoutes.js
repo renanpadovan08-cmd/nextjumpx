@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import * as controller from '../controllers/appointmentController.js';
+import { requireAuth } from '../middleware/authMiddleware.js';
+const router = Router();
+router.get('/appointments', requireAuth, controller.listAppointments);
+router.get('/appointments/availability', requireAuth, controller.availability);
+router.post('/appointments', requireAuth, controller.createAppointment);
+router.patch('/appointments/:id', requireAuth, controller.updateAppointment);
+router.delete('/appointments/:id', requireAuth, controller.deleteAppointment);
+export default router;

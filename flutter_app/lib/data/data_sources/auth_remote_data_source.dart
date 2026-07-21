@@ -1,0 +1,12 @@
+import '../model/auth_user_dto.dart';
+import '../../services/api.dart';
+
+class AuthRemoteDataSource {
+  const AuthRemoteDataSource(this._api);
+  final ApiClient _api;
+  Future<({String token, AuthUserDto user})> login(String login, String password) async {
+    final data = await _api.post('/auth/login', {'login': login, 'password': password}) as Map<String, dynamic>;
+    return (token: '${data['token']}', user: AuthUserDto.fromJson(data['user'] as Map<String, dynamic>));
+  }
+  Future<AuthUserDto> me() async => AuthUserDto.fromJson(await _api.get('/auth/me') as Map<String, dynamic>);
+}
