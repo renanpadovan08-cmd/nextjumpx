@@ -6,7 +6,54 @@ import 'ui/core/widgets/zen_app_background.dart';
 import 'ui/auth/login_screen.dart';
 import 'ui/core/app_shell.dart';
 import 'ui/core/view_models/app_view_model.dart';
+import 'ui/landing/nextjumpx_landing_screen.dart';
 
-void main() { WidgetsFlutterBinding.ensureInitialized(); runApp(const ZenBarberApp()); }
-class ZenBarberApp extends StatefulWidget { const ZenBarberApp({super.key}); @override State<ZenBarberApp> createState() => _ZenBarberAppState(); }
-class _ZenBarberAppState extends State<ZenBarberApp> { late final AppViewModel app; @override void initState() { super.initState(); app = AppViewModelFactory.build()..addListener(_refresh); app.restoreSession(); } void _refresh() { if (mounted) setState(() {}); } @override void dispose() { app.dispose(); super.dispose(); } @override Widget build(BuildContext context) => MaterialApp(navigatorKey:navigatorKey,scaffoldMessengerKey:scaffoldMessengerKey,debugShowCheckedModeBanner: false, title: 'ZenBarber', theme: ZenTheme.dark(), builder:(context,child)=>ZenAppBackground(child:child??const SizedBox()), home: app.loading ? const Scaffold(body: Center(child: CircularProgressIndicator())) : app.authenticated ? AppShell(app: app) : LoginScreen(viewModel: app)); }
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const ZenBarberApp());
+}
+
+class ZenBarberApp extends StatefulWidget {
+  const ZenBarberApp({super.key});
+  @override
+  State<ZenBarberApp> createState() => _ZenBarberAppState();
+}
+
+class _ZenBarberAppState extends State<ZenBarberApp> {
+  late final AppViewModel app;
+  bool showLogin = false;
+  @override
+  void initState() {
+    super.initState();
+    app = AppViewModelFactory.build()..addListener(_refresh);
+    app.restoreSession();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    app.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+      navigatorKey: navigatorKey,
+      scaffoldMessengerKey: scaffoldMessengerKey,
+      debugShowCheckedModeBanner: false,
+      title: 'NextJumpX',
+      theme: ZenTheme.dark(),
+      builder: (context, child) =>
+          ZenAppBackground(child: child ?? const SizedBox()),
+      home: app.loading
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          : app.authenticated
+              ? AppShell(app: app)
+              : showLogin
+                  ? LoginScreen(viewModel: app)
+                  : NextJumpXLandingScreen(
+                      onZenBarber: () => setState(() => showLogin = true)));
+}
