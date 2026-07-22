@@ -1,0 +1,9 @@
+abstract interface class IOperationsRepository {
+  Future<dynamic> get(String feature, {Map<String, String>? query});
+  Future<dynamic> patch(String feature, String id, Map<String, dynamic> body);
+  Future<dynamic> patchBarber(String id, Map<String, dynamic> body);
+  Future<dynamic> patchCurrent(String feature, Map<String, dynamic> body);
+  Future<List<dynamic>> units();
+  Future<dynamic> createUnit(Map<String, dynamic> body);
+  Future<dynamic> createCashEntry(Map<String, dynamic> body);
+}

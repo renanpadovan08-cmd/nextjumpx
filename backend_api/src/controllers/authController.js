@@ -15,6 +15,9 @@ export async function login(req, res) {
   if (!inputLogin || !password) throw new HttpError(400, 'Informe login e senha');
   const barber = await one(supabase.from('barbers').select('*').eq('login', inputLogin.trim()).limit(1), 'Login ou senha invalidos');
   if (barber.access_status !== 'ativo') throw new HttpError(403, 'Acesso pendente, bloqueado ou expirado');
+  if (barber.expires_at && /^\d{4}-\d{2}-\d{2}$/.test(barber.expires_at) && barber.expires_at < new Date().toISOString().slice(0, 10)) {
+    throw new HttpError(403, 'Acesso expirado. Fale com o administrador.');
+  }
   const valid = barber.password_hash
     ? await bcrypt.compare(password, barber.password_hash)
     : barber.password === password;

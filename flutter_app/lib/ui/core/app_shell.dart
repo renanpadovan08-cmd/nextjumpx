@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../dependency_injection/factories/agenda_factory.dart';
+import '../../dependency_injection/factories/admin_factory.dart';
 import '../../dependency_injection/factories/barbers_factory.dart';
 import '../../dependency_injection/factories/catalog_factory.dart';
 import '../../dependency_injection/factories/dashboard_factory.dart';
 import '../../dependency_injection/factories/feature_factories.dart';
+import '../../dependency_injection/factories/pro_module_factory.dart';
 import '../agenda/agenda_screen.dart';
+import '../admin/admin_screen.dart';
 import '../barbers/barbers_screen.dart';
 import '../catalog/catalog_screen.dart';
 import '../dashboard/dashboard_screen.dart';
@@ -34,37 +37,38 @@ class _AppShellState extends State<AppShell> {
   bool suporteOpen = false;
 
   late final DashboardScreen dashboard = DashboardFactory.build();
-  late final AgendaScreen agenda = AgendaFactory.build();
+  late final AgendaScreen agenda = AgendaFactory.build(widget.app.user!);
   late final CatalogScreen catalog = CatalogFactory.build(widget.app.user!);
   late final BarbersScreen barbers = BarbersFactory.build(widget.app.user!);
   late final FixedClientsScreen fixedClients =
-      FixedClientsScreen(viewModel: FeatureFactories.fixedClients());
+      FixedClientsScreen(viewModel: FeatureFactories.fixedClients(), user: widget.app.user!);
   late final OperationsScreen operations =
       OperationsScreen(viewModel: FeatureFactories.operations());
   late final PublicBookingScreen publicBooking =
       PublicBookingScreen(viewModel: FeatureFactories.publicBooking());
-  late final ProModuleScreen wallet =
-      const ProModuleScreen(module: ProModule.wallet);
-  late final ProModuleScreen whatsapp =
-      const ProModuleScreen(module: ProModule.whatsapp);
-  late final ProModuleScreen pending =
-      const ProModuleScreen(module: ProModule.pending);
-  late final ProModuleScreen reports =
-      const ProModuleScreen(module: ProModule.reports);
-  late final ProModuleScreen commissions =
-      const ProModuleScreen(module: ProModule.commissions);
-  late final ProModuleScreen retention =
-      const ProModuleScreen(module: ProModule.retention);
-  late final ProModuleScreen cash =
-      const ProModuleScreen(module: ProModule.cash);
-  late final ProModuleScreen profile =
-      const ProModuleScreen(module: ProModule.profile);
-  late final ProModuleScreen hours =
-      const ProModuleScreen(module: ProModule.hours);
-  late final ProModuleScreen support =
-      const ProModuleScreen(module: ProModule.support);
-  late final ProModuleScreen units =
-      const ProModuleScreen(module: ProModule.units);
+  late final ProModuleScreen wallet = ProModuleScreen(
+      module: ProModule.wallet, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen whatsapp = ProModuleScreen(
+      module: ProModule.whatsapp, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen pending = ProModuleScreen(
+      module: ProModule.pending, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen reports = ProModuleScreen(
+      module: ProModule.reports, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen commissions = ProModuleScreen(
+      module: ProModule.commissions, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen retention = ProModuleScreen(
+      module: ProModule.retention, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen cash = ProModuleScreen(
+      module: ProModule.cash, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen profile = ProModuleScreen(
+      module: ProModule.profile, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen hours = ProModuleScreen(
+      module: ProModule.hours, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen support = ProModuleScreen(
+      module: ProModule.support, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen units = ProModuleScreen(
+      module: ProModule.units, viewModel: ProModuleFactory.build());
+  late final AdminScreen admin = AdminScreen(viewModel: AdminFactory.build());
 
   List<Widget> get screens => [
         dashboard,
@@ -85,6 +89,7 @@ class _AppShellState extends State<AppShell> {
         hours,
         support,
         units,
+        if (widget.app.user!.isAdmin) admin,
       ];
 
   void _navigate(int page) => setState(() => index = page);
@@ -108,6 +113,7 @@ class _AppShellState extends State<AppShell> {
         15 => 'Funcionamento',
         16 => 'Suporte / Chat',
         17 => 'Unidades',
+        18 => 'Gestao PRO',
         _ => 'Dashboard',
       };
 
@@ -256,6 +262,9 @@ class _AppShellState extends State<AppShell> {
                         () => setState(() => negocioOpen = !negocioOpen)),
                     if (negocioOpen) ...[
                       _nav('Dashboard PRO', Icons.grid_view_rounded, 0),
+                      if (widget.app.user!.isAdmin)
+                        _nav('Gestao PRO', Icons.admin_panel_settings_outlined,
+                            18),
                       _nav('Pendências / Baixa', Icons.assignment_late_outlined,
                           7),
                       _nav(

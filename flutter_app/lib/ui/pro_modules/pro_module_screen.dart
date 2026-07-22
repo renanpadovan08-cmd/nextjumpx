@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/theme/zen_colors.dart';
 import '../core/widgets/zen_card.dart';
+import 'view_models/pro_module_view_model.dart';
 
 enum ProModule {
   wallet,
@@ -18,9 +20,11 @@ enum ProModule {
 }
 
 class ProModuleScreen extends StatefulWidget {
-  const ProModuleScreen({super.key, required this.module});
+  const ProModuleScreen(
+      {super.key, required this.module, required this.viewModel});
 
   final ProModule module;
+  final ProModuleViewModel viewModel;
 
   @override
   State<ProModuleScreen> createState() => _ProModuleScreenState();
@@ -28,6 +32,26 @@ class ProModuleScreen extends StatefulWidget {
 
 class _ProModuleScreenState extends State<ProModuleScreen> {
   final Set<String> _completed = {};
+  final Map<String, String> _commissionInputs = {};
+  final Map<String, String> _currentInputs = {};
+
+  @override
+  void initState() {
+    super.initState();
+    widget.viewModel
+      ..addListener(_refresh)
+      ..load(widget.module);
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.viewModel.removeListener(_refresh);
+    super.dispose();
+  }
 
   String get title => switch (widget.module) {
         ProModule.wallet => 'Clientes em carteira',
@@ -53,6 +77,11 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
         children: [
           _eyebrow(),
           const SizedBox(height: 16),
+          if (widget.viewModel.error != null) _error(widget.viewModel.error!),
+          if (widget.viewModel.loading)
+            const Padding(
+                padding: EdgeInsets.only(bottom: 14),
+                child: LinearProgressIndicator()),
           switch (widget.module) {
             ProModule.wallet => _wallet(),
             ProModule.whatsapp => _whatsapp(),
@@ -68,6 +97,15 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           },
         ],
       );
+
+  Widget _error(String value) => Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+              color: const Color(0xff421b20),
+              borderRadius: BorderRadius.circular(11)),
+          child: Text(value)));
 
   Widget _eyebrow() =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -98,38 +136,53 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
         ProModule.units => 'Gerencie as unidades e a operação multiunidade.',
       };
 
-  Widget _wallet() => Column(children: [
-        _surface(
-          'Valores pendentes',
-          'Use Bonificar quando decidir isentar uma cobrança. Cancele cobranças erradas sem somar no faturamento.',
-          [
-            _walletRow(
-                'Parcela 1/3 assinatura • R\$ 300,00 • Vitor Santos',
-                'Chulé • parcela mensal • vencimento/lembrete: 30/06',
-                'R\$ 300,00'),
-            _walletRow('Valor a receber • Renan Padovan',
-                'Corte + barba • lançamento manual', 'R\$ 75,00'),
-          ],
-        ),
+  List<Map<String, dynamic>> get _rows =>
+      List<Map<String, dynamic>>.from((widget.viewModel.data is List
+          ? widget.viewModel.data
+          : const <dynamic>[]) as List);
+  Map<String, dynamic> get _object => widget.viewModel.data is Map
+      ? Map<String, dynamic>.from(widget.viewModel.data as Map)
+      : <String, dynamic>{};
+  String _money(dynamic value) =>
+      'R\$ ${((value as num?) ?? num.tryParse('$value') ?? 0).toStringAsFixed(2).replaceAll('.', ',')}';
+
+  Widget _wallet() => _surface('Valores pendentes',
+          'Receba, bonifique, cancele e ajuste cada cobrança pendente.', [
+        if (_rows.isEmpty)
+          const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Nenhum valor pendente na carteira.',
+                  style: TextStyle(color: ZenColors.muted)))
+        else
+          ..._rows.map((row) => _walletRow(row)),
       ]);
 
-  Widget _walletRow(String name, String detail, String amount) => Container(
+  Widget _walletRow(Map<String, dynamic> row) => Container(
         margin: const EdgeInsets.only(top: 14),
         padding: const EdgeInsets.all(17),
         decoration: _inset(),
         child: LayoutBuilder(
           builder: (context, box) => box.maxWidth > 740
               ? Row(children: [
-                  Expanded(child: _walletText(name, detail, amount)),
+                  Expanded(
+                      child: _walletText(
+                          '${row['client_name'] ?? 'Cobrança'}',
+                          '${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''} • lembrete: ${row['reminder_date'] ?? 'não definido'}',
+                          _money(row['received_amount'] ??
+                              row['services']?['price']))),
                   const SizedBox(width: 16),
-                  _walletActions(name)
+                  _walletActions('${row['id']}')
                 ])
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                      _walletText(name, detail, amount),
+                      _walletText(
+                          '${row['client_name'] ?? 'Cobrança'}',
+                          '${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''}',
+                          _money(row['received_amount'] ??
+                              row['services']?['price'])),
                       const SizedBox(height: 13),
-                      _walletActions(name)
+                      _walletActions('${row['id']}')
                     ]),
         ),
       );
@@ -160,169 +213,252 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           children: [
             _action('Cobrar no WhatsApp',
                 () => _message('Mensagem de cobrança preparada.')),
-            _action('Marcar recebido', () => _complete(key), green: true),
+            _action('Marcar recebido',
+                () => _operation(ProModule.wallet, key, {'action': 'received'}),
+                green: true),
             _action(
                 'Valor a receber', () => _message('Valor pronto para ajuste.'),
                 gold: true),
-            _action('Bonificar', () => _complete(key), gold: true),
-            _action('Cancelar cobrança', () => _complete(key), danger: true),
+            _action('Bonificar',
+                () => _operation(ProModule.wallet, key, {'action': 'bonify'}),
+                gold: true),
+            _action('Cancelar cobrança',
+                () => _operation(ProModule.wallet, key, {'action': 'cancel'}),
+                danger: true),
             _action('Corrigir valor', () => _message('Editor de valor aberto.'))
           ]));
 
-  Widget _whatsapp() => _surface(
-          'Central WhatsApp do dia',
-          'Ações rápidas para os clientes com atendimento ou cobrança em aberto.',
-          [
-            _filterBar(['Hoje', 'Confirmações', 'Atrasos', 'Cobranças']),
-            _command(
-                '09:30 • Nicolas H',
-                'Corte • Renan Padovan • aguardando confirmação',
-                ['Confirmar', 'Reagendar', 'Atraso', 'Copiar']),
-            _command(
-                'Cobrança • Vitor Santos',
-                'Assinatura mensal • R\$ 300,00 pendente',
-                ['Cobrar', 'Copiar', 'Marcar recebido']),
-            _command('Cliente ausente • Carol Brava', 'Último corte há 57 dias',
-                ['Chamar', 'Copiar']),
-          ]);
+  Future<void> _operation(
+      ProModule module, String id, Map<String, dynamic> body) async {
+    final ok = await widget.viewModel.action(module, id, body);
+    if (mounted) {
+      _message(ok
+          ? 'Ação registrada com sucesso.'
+          : 'Não foi possível concluir a ação.');
+    }
+  }
+
+  Widget _whatsapp() {
+    final today = List<Map<String, dynamic>>.from((_object['today'] as List?) ?? const []);
+    final wallet = List<Map<String, dynamic>>.from((_object['wallet'] as List?) ?? const []);
+    return _surface('Central WhatsApp do dia', 'Mensagens prontas para confirmar, reagendar e cobrar, usando os dados reais da agenda.', [
+      _filterBar(['Hoje', 'Confirmações', 'Atrasos', 'Cobranças']),
+      if (today.isEmpty && wallet.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Nenhuma ação de WhatsApp pendente hoje.', style: TextStyle(color: ZenColors.muted))),
+      ...today.map((row) => _whatsappRow(row, false)),
+      ...wallet.map((row) => _whatsappRow(row, true)),
+    ]);
+  }
+
+  Widget _whatsappRow(Map<String, dynamic> row, bool charge) => Container(margin: const EdgeInsets.only(top: 10), padding: const EdgeInsets.all(14), decoration: _inset(), child: LayoutBuilder(builder: (context, box) => box.maxWidth > 630 ? Row(children: [Expanded(child: _walletText('${charge ? 'Cobrança' : row['time'] ?? '--:--'} • ${row['client_name'] ?? 'Cliente'}', '${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''} • ${row['client_phone'] ?? 'sem telefone'}', '')), const SizedBox(width: 10), Wrap(spacing: 7, runSpacing: 7, children: [_action(charge ? 'Cobrar' : 'Confirmar', () => _copyWhats(row, charge ? 'charge' : 'confirm'), green: true), _action('Reagendar', () => _copyWhats(row, 'reschedule')), _action('Copiar', () => _copyWhats(row, charge ? 'charge' : 'confirm'))])]) : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_walletText('${charge ? 'Cobrança' : row['time'] ?? '--:--'} • ${row['client_name'] ?? 'Cliente'}', '${row['services']?['name'] ?? 'Serviço'} • ${row['client_phone'] ?? 'sem telefone'}', ''), const SizedBox(height: 10), Wrap(spacing: 7, runSpacing: 7, children: [_action(charge ? 'Cobrar' : 'Confirmar', () => _copyWhats(row, charge ? 'charge' : 'confirm'), green: true), _action('Reagendar', () => _copyWhats(row, 'reschedule')), _action('Copiar', () => _copyWhats(row, charge ? 'charge' : 'confirm'))])])));
+
+  Future<void> _copyWhats(Map<String, dynamic> row, String type) async {
+    final name = '${row['client_name'] ?? 'cliente'}'.split(' ').first;
+    final shop = '${row['barbers']?['shop_name'] ?? 'barbearia'}';
+    final time = '${row['time'] ?? ''}';
+    final service = '${row['services']?['name'] ?? 'serviço'}';
+    final message = switch (type) {
+      'charge' => 'Olá $name, tudo bem? Passando para lembrar do valor de ${_money(row['received_amount'] ?? row['services']?['price'])} referente ao $service na $shop.',
+      'reschedule' => 'Olá $name, tudo bem? Precisamos ajustar seu horário na $shop. Me chama por aqui para remarcarmos o melhor horário.',
+      _ => 'Olá $name, tudo bem? Passando para confirmar seu horário na $shop hoje às $time. Posso confirmar?',
+    };
+    await Clipboard.setData(ClipboardData(text: message));
+    if (mounted) _message('Mensagem copiada. Abra o WhatsApp e envie para o cliente.');
+  }
 
   Widget _pending() => _surface(
           'Atendimentos pendentes de baixa',
           'Confirme o que aconteceu com cada horário passado antes de fechar o dia.',
           [
             _filterBar(['Hoje', 'Últimos 7 dias', 'Todos os pendentes']),
-            _command(
-                '15:00 • Cliente de teste',
-                'Corte • R\$ 45,00 • horário passou sem baixa',
-                ['Dar baixa', 'Valor', 'Carteira', 'Faltou']),
-            _command(
-                '17:30 • Cliente encaixe',
-                'Barba • R\$ 35,00 • aguardando decisão',
-                ['Dar baixa', 'Carteira', 'Faltou']),
+            if (_rows.isEmpty)
+              const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text('Nenhum atendimento pendente de baixa.',
+                      style: TextStyle(color: ZenColors.muted)))
+            else
+              ..._rows.map(_pendingRow),
           ]);
 
-  Widget _commissions() => Column(children: [
-        Wrap(spacing: 12, runSpacing: 12, children: [
-          _metric('Faturamento bruto', 'R\$ 4.217,91', ZenColors.green),
-          _metric('Total comissão', 'R\$ 688,00', const Color(0xfff1be47)),
-          _metric('Lucro líquido', 'R\$ 3.529,91', const Color(0xff7ae1ac)),
-          _metric('Barbeiros', '3', ZenColors.sky),
-        ]),
-        const SizedBox(height: 16),
-        _surface(
-            'Editar comissão dos barbeiros',
-            'Defina a porcentagem paga para cada barbeiro. O financeiro desconta esse valor automaticamente.',
-            [
-              _commission('Vitor Santos',
-                  '31 atendimento(s) concluído(s) • Bruto: R\$ 3.071,24', '0'),
-              _commission('Renan Padovan',
-                  '15 atendimento(s) concluído(s) • Bruto: R\$ 1.146,67', '60'),
-              _commission('Barbeiro novo',
-                  '0 atendimento(s) concluído(s) • Bruto: R\$ 0,00', '0'),
-            ]),
-      ]);
+  Widget _pendingRow(Map<String, dynamic> row) => Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: _inset(),
+      child: LayoutBuilder(
+          builder: (context, box) => box.maxWidth > 620
+              ? Row(children: [
+                  Expanded(
+                      child: _walletText(
+                          '${row['time'] ?? '--:--'} • ${row['client_name'] ?? 'Cliente'}',
+                          '${row['services']?['name'] ?? 'Serviço'} • ${_money(row['services']?['price'])}',
+                          '')),
+                  const SizedBox(width: 10),
+                  Wrap(spacing: 7, runSpacing: 7, children: [
+                    _action(
+                        'Dar baixa',
+                        () => _operation(ProModule.pending, '${row['id']}',
+                            {'action': 'received'}),
+                        green: true),
+                    _action(
+                        'Carteira',
+                        () => _operation(ProModule.pending, '${row['id']}',
+                            {'action': 'wallet'}),
+                        gold: true),
+                    _action(
+                        'Faltou',
+                        () => _operation(ProModule.pending, '${row['id']}',
+                            {'action': 'no_show'}),
+                        danger: true)
+                  ])
+                ])
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _walletText(
+                      '${row['time'] ?? '--:--'} • ${row['client_name'] ?? 'Cliente'}',
+                      '${row['services']?['name'] ?? 'Serviço'} • ${_money(row['services']?['price'])}',
+                      ''),
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 7, runSpacing: 7, children: [
+                    _action(
+                        'Dar baixa',
+                        () => _operation(ProModule.pending, '${row['id']}',
+                            {'action': 'received'}),
+                        green: true),
+                    _action(
+                        'Carteira',
+                        () => _operation(ProModule.pending, '${row['id']}',
+                            {'action': 'wallet'}),
+                        gold: true),
+                    _action(
+                        'Faltou',
+                        () => _operation(ProModule.pending, '${row['id']}',
+                            {'action': 'no_show'}),
+                        danger: true)
+                  ])
+                ])));
 
-  Widget _retention() => Column(children: [
-        Wrap(spacing: 12, runSpacing: 12, children: [
-          _metric('Clientes em risco', '2', const Color(0xfff3ad46)),
-          _metric('Recuperados', '0', ZenColors.green),
-          _metric('Taxa de retorno', '0%', ZenColors.sky),
-          _metric('Índice ZEN', '7 • Crítico', const Color(0xffee705c))
-        ]),
-        const SizedBox(height: 16),
-        _surface('Clientes para recuperar',
-            'Clientes que concluíram atendimento e ainda não retornaram.', [
-          _command(
-              'Luara',
-              'Último corte há 60 dias • Alisamento • Vitor Santos',
-              ['Chamar no WhatsApp', 'Marcar recuperado']),
-          _command(
-              'Nicolas H',
-              'Último corte há 60 dias • Corte • Renan Padovan',
-              ['Chamar no WhatsApp', 'Marcar recuperado']),
-          _command('Carol Brava', 'Último corte há 57 dias • Pontas e escova',
-              ['Chamar no WhatsApp', 'Marcar recuperado']),
-        ]),
-      ]);
-
-  Widget _reports() => Column(children: [
-        _surface('Ranking de barbeiros',
-            'Faturamento, atendimentos e comissão do mês selecionado.', [
-          _rankingRow('#1', 'Vitor Santos', '31 atendimento(s)', 'R\$ 3.071,24',
-              const Color(0xffe4bd52)),
-          _rankingRow('#2', 'Renan Padovan', '15 atendimento(s)',
-              'R\$ 1.146,67', ZenColors.muted),
-          _rankingRow('#3', 'Barbeiro novo', '0 atendimento(s)', 'R\$ 0,00',
-              const Color(0xffbd784f)),
-        ]),
-        const SizedBox(height: 16),
-        _surface('Resumo financeiro',
-            'Selecione o período para comparar os resultados da barbearia.', [
-          _filterBar(['Julho/2026', 'Mensal', 'Exportar relatório']),
-          Wrap(spacing: 20, runSpacing: 16, children: [
-            _miniValue('Faturamento', 'R\$ 4.217,91'),
-            _miniValue('Comissão', 'R\$ 688,00'),
-            _miniValue('Lucro', 'R\$ 3.529,91')
+  Widget _commissions() {
+    final total =
+        _rows.fold<num>(0, (sum, row) => sum + ((row['gross'] as num?) ?? 0));
+    final commissions = _rows.fold<num>(
+        0, (sum, row) => sum + ((row['commission'] as num?) ?? 0));
+    return Column(children: [
+      Wrap(spacing: 12, runSpacing: 12, children: [
+        _metric('Faturamento bruto', _money(total), ZenColors.green),
+        _metric('Total comissão', _money(commissions), const Color(0xfff1be47)),
+        _metric('Lucro líquido', _money(total - commissions),
+            const Color(0xff7ae1ac)),
+        _metric('Barbeiros', '${_rows.length}', ZenColors.sky),
+      ]),
+      const SizedBox(height: 16),
+      _surface(
+          'Editar comissão dos barbeiros',
+          'Defina a porcentagem paga para cada barbeiro. O financeiro desconta esse valor automaticamente.',
+          [
+            if (_rows.isEmpty)
+              const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: Text('Nenhum barbeiro disponível.',
+                      style: TextStyle(color: ZenColors.muted)))
+            else
+              ..._rows.map((row) => _commission(
+                  '${row['id']}',
+                  '${row['name'] ?? 'Barbeiro'}',
+                  '${row['appointments'] ?? 0} atendimento(s) concluído(s) • Bruto: ${_money(row['gross'])}',
+                  '${row['commission_rate'] ?? 0}')),
           ]),
-        ]),
-      ]);
+    ]);
+  }
+
+  Widget _retention() {
+    final risk =
+        List<Map<String, dynamic>>.from((_object['risk'] as List?) ?? const []);
+    return Column(children: [
+      Wrap(spacing: 12, runSpacing: 12, children: [
+        _metric('Clientes em risco', '${risk.length}', const Color(0xfff3ad46)),
+        _metric('Recuperados', '${_object['recovered'] ?? 0}', ZenColors.green),
+        _metric(
+            'Taxa de retorno', '${_object['returnRate'] ?? 0}%', ZenColors.sky),
+        _metric('Índice ZEN', '${_object['zenIndex'] ?? 10}',
+            const Color(0xffee705c))
+      ]),
+      const SizedBox(height: 16),
+      _surface('Clientes para recuperar',
+          'Clientes que concluíram atendimento e ainda não retornaram.', [
+        if (risk.isEmpty)
+          const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Nenhum cliente em risco no momento.',
+                  style: TextStyle(color: ZenColors.muted)))
+        else
+          ...risk.map((row) => _command(
+              '${row['client_name'] ?? 'Cliente'}',
+              'Último atendimento há ${row['daysAway'] ?? 0} dias • ${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''}',
+              ['Chamar no WhatsApp', 'Marcar recuperado'])),
+      ]),
+    ]);
+  }
+
+  Widget _reports() {
+    final ordered = [..._rows]..sort((a, b) => ((b['gross'] as num?) ?? 0).compareTo((a['gross'] as num?) ?? 0));
+    final gross = ordered.fold<num>(0, (sum, row) => sum + ((row['gross'] as num?) ?? 0));
+    final commissions = ordered.fold<num>(0, (sum, row) => sum + ((row['commission'] as num?) ?? 0));
+    return Column(children: [
+      _surface('Ranking de barbeiros', 'Faturamento, atendimentos e comissão do mês selecionado.', [
+        if (ordered.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Ainda não há resultados no período.', style: TextStyle(color: ZenColors.muted))) else ...ordered.take(5).toList().asMap().entries.map((entry) => _rankingRow('#${entry.key + 1}', '${entry.value['name'] ?? 'Barbeiro'}', '${entry.value['appointments'] ?? 0} atendimento(s)', _money(entry.value['gross']), entry.key == 0 ? const Color(0xffe4bd52) : ZenColors.muted)),
+      ]),
+      const SizedBox(height: 16),
+      _surface('Resumo financeiro', 'Resultados consolidados da operação no mês atual.', [
+        Wrap(spacing: 20, runSpacing: 16, children: [_miniValue('Faturamento', _money(gross)), _miniValue('Comissão', _money(commissions)), _miniValue('Lucro', _money(gross - commissions))]),
+      ]),
+    ]);
+  }
 
   Widget _cash() => _surface('Controle de caixa',
           'Acompanhe entradas, saídas e o saldo do período.', [
         Wrap(spacing: 12, runSpacing: 12, children: [
-          _metric('Entradas', 'R\$ 4.217,91', ZenColors.green),
-          _metric('Saídas', 'R\$ 688,00', const Color(0xffed7268)),
-          _metric('Saldo', 'R\$ 3.529,91', ZenColors.sky)
+          _metric('Entradas', _money(_object['entries']), ZenColors.green),
+          _metric('Saídas', _money(_object['commissions']),
+              const Color(0xffed7268)),
+          _metric('Saldo', _money(_object['balance']), ZenColors.sky)
         ]),
         const SizedBox(height: 15),
-        _command('Recebimento • Corte', 'Hoje, 10:20 • Renan Padovan',
-            ['Ver lançamento']),
-        _command('Comissão • Renan Padovan', 'A pagar no fechamento mensal',
-            ['Ver lançamento']),
+        ...List<Map<String,dynamic>>.from((_object['manual'] as List?)??const[]).map((entry)=>_command('${entry['type']=='entrada'?'Entrada':'Saída'} • ${entry['description']??''}','${entry['entry_date']??''} • ${_money(entry['amount'])}',['Ver lançamento'])),
         const SizedBox(height: 12),
         Align(
             alignment: Alignment.centerRight,
-            child: _action('Adicionar lançamento',
-                () => _message('Novo lançamento financeiro aberto.'),
+            child: _action('Adicionar lançamento',_createCashDialog,
                 green: true)),
       ]);
 
-  Widget _profile() => _surface(
-          'Perfil da barbearia',
-          'Essas informações aparecem no painel e no link público do cliente.',
-          [
-            const _ReadOnlyField(
-                label: 'Nome da barbearia', value: "Vitu's Barber"),
-            const _ReadOnlyField(label: 'Responsável', value: 'Renan Padovan'),
-            const _ReadOnlyField(label: 'WhatsApp', value: '(14) 99634-8162'),
-            const _ReadOnlyField(label: 'Login público', value: 'renan'),
-            Align(
-                alignment: Alignment.centerRight,
-                child: _action('Salvar configurações',
-                    () => _message('Configurações salvas.'),
-                    green: true)),
-          ]);
+  Future<void> _createCashDialog()async{final description=TextEditingController();final amount=TextEditingController();var type='entrada';final data=await showDialog<Map<String,String>>(context:context,builder:(context)=>AlertDialog(title:const Text('Lançamento de caixa'),content:StatefulBuilder(builder:(context,setDialog)=>Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:description,decoration:const InputDecoration(labelText:'Descrição')),const SizedBox(height:10),TextField(controller:amount,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Valor')),const SizedBox(height:10),DropdownButtonFormField<String>(initialValue:type,items:const[DropdownMenuItem(value:'entrada',child:Text('Entrada')),DropdownMenuItem(value:'saida',child:Text('Saída'))],onChanged:(value)=>setDialog(()=>type=value??type),decoration:const InputDecoration(labelText:'Tipo'))])),actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancelar')),FilledButton(onPressed:()=>Navigator.pop(context,{'description':description.text.trim(),'amount':amount.text.trim(),'type':type}),child:const Text('Salvar'))]));description.dispose();amount.dispose();if(data==null||data['description']!.isEmpty)return;final ok=await widget.viewModel.createCashEntry({'description':data['description'],'amount':double.tryParse(data['amount']??'')??0,'type':data['type']});if(mounted)_message(ok?'Lançamento registrado.':'Não foi possível registrar o lançamento.');}
 
-  Widget _hours() => _surface(
-          'Funcionamento inteligente',
-          'Defina horários, pausas e dias fechados; a agenda respeita cada configuração.',
-          [
-            ...[
-              'Segunda-feira',
-              'Terça-feira',
-              'Quarta-feira',
-              'Quinta-feira',
-              'Sexta-feira',
-              'Sábado'
-            ].map((day) => _dayRow(day)),
-            _dayRow('Domingo', closed: true),
-            const SizedBox(height: 8),
-            Align(
-                alignment: Alignment.centerRight,
-                child: _action('Salvar funcionamento',
-                    () => _message('Horários atualizados.'),
-                    green: true)),
-          ]);
+  Widget _profile() => _surface('Perfil da barbearia', 'Informações do profissional autenticado e sua identidade no painel.', [
+        _currentField('name', 'Responsável', '${_object['name'] ?? ''}'),
+        _currentField('phone', 'WhatsApp', '${_object['phone'] ?? ''}'),
+        _currentField('photoUrl', 'URL da foto', '${_object['photo_url'] ?? ''}'),
+        _currentField('backgroundUrl', 'URL do fundo público', '${_object['background_url'] ?? ''}'),
+        const SizedBox(height: 4),
+        Text('Login público: ${_object['login'] ?? ''} • Barbearia: ${_object['shop_name'] ?? ''}', style: const TextStyle(color: ZenColors.muted, fontSize: 12)),
+        const SizedBox(height: 12),
+        Align(alignment: Alignment.centerRight, child: _action('Salvar configurações', () => _saveCurrent(ProModule.profile), green: true)),
+      ]);
+
+  Widget _hours() => _surface('Funcionamento inteligente', 'Defina expediente, pausa e dias fechados; a agenda respeita cada configuração.', [
+        LayoutBuilder(builder: (context, box) => Wrap(spacing: 12, runSpacing: 12, children: [SizedBox(width: box.maxWidth > 600 ? 220 : double.infinity, child: _currentField('workStart', 'Início do expediente', '${_object['work_start'] ?? '09:00'}', time: true)), SizedBox(width: box.maxWidth > 600 ? 220 : double.infinity, child: _currentField('workEnd', 'Fim do expediente', '${_object['work_end'] ?? '19:00'}', time: true)), SizedBox(width: box.maxWidth > 600 ? 220 : double.infinity, child: _currentField('breakStart', 'Início da pausa', '${_object['break_start'] ?? ''}', time: true)), SizedBox(width: box.maxWidth > 600 ? 220 : double.infinity, child: _currentField('breakEnd', 'Fim da pausa', '${_object['break_end'] ?? ''}', time: true))])),
+        const SizedBox(height: 12),
+        _currentField('offDays', 'Dias fechados (0=domingo, 6=sábado; separe por vírgula)', '${_object['off_days'] ?? ''}'),
+        const SizedBox(height: 12),
+        Align(alignment: Alignment.centerRight, child: _action('Salvar funcionamento', () => _saveCurrent(ProModule.hours), green: true)),
+      ]);
+
+  Widget _currentField(String key, String label, String initial, {bool time = false}) => Padding(padding: const EdgeInsets.only(bottom: 10), child: TextFormField(initialValue: _currentInputs[key] ?? initial, keyboardType: time ? TextInputType.datetime : TextInputType.text, onChanged: (value) => _currentInputs[key] = value, decoration: InputDecoration(labelText: label, hintText: time ? 'HH:MM' : null)));
+
+  Future<void> _saveCurrent(ProModule module) async {
+    final allowed = module == ProModule.profile ? ['name', 'phone', 'photoUrl', 'backgroundUrl'] : ['workStart', 'workEnd', 'breakStart', 'breakEnd', 'offDays'];
+    final body = <String, dynamic>{for (final key in allowed) if (_currentInputs.containsKey(key)) key: _currentInputs[key]};
+    if (body.isEmpty) { _message('Altere algum campo antes de salvar.'); return; }
+    final ok = await widget.viewModel.saveCurrent(module, body);
+    if (mounted) _message(ok ? 'Configurações salvas.' : 'Não foi possível salvar as configurações.');
+  }
 
   Widget _support() => _surface('Como podemos ajudar?',
           'Envie sua dúvida para o suporte ou acesse respostas rápidas.', [
@@ -338,19 +474,23 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
             'Status da conta', 'Plano ZenBarber Pro ativo.', ['Ver detalhes']),
       ]);
 
-  Widget _units() => _surface('Unidades cadastradas',
-          'Escolha a unidade ativa ou gerencie dados de cada operação.', [
-        _command(
-            'Matriz', 'Unidade principal • ativa', ['Gerenciar', 'Selecionar']),
-        _command('Unidade CT treinamentos', 'Unidade adicional • ativa',
-            ['Gerenciar', 'Selecionar']),
+  Widget _units() => _surface('Unidades cadastradas', 'Solicitações e unidades vinculadas a esta barbearia.', [
+        if (_rows.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Nenhuma unidade adicional cadastrada.', style: TextStyle(color: ZenColors.muted))) else ..._rows.map((row) => _command('${row['unit_name'] ?? 'Unidade'}', '${row['city'] ?? ''}/${row['state'] ?? ''} • status: ${row['status'] ?? 'pendente'}', ['Selecionar'])),
         const SizedBox(height: 10),
-        Align(
-            alignment: Alignment.centerRight,
-            child: _action('Adicionar unidade',
-                () => _message('Cadastro de unidade aberto.'),
-                green: true)),
+        Align(alignment: Alignment.centerRight, child: _action('Adicionar unidade', _createUnitDialog, green: true)),
       ]);
+
+  Future<void> _createUnitDialog() async {
+    final name = TextEditingController();
+    final city = TextEditingController();
+    final state = TextEditingController();
+    final amount = TextEditingController(text: '1');
+    final value = await showDialog<Map<String, String>>(context: context, builder: (context) => AlertDialog(title: const Text('Nova unidade'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: name, decoration: const InputDecoration(labelText: 'Nome da unidade')), const SizedBox(height: 10), TextField(controller: city, decoration: const InputDecoration(labelText: 'Cidade')), const SizedBox(height: 10), TextField(controller: state, decoration: const InputDecoration(labelText: 'UF')), const SizedBox(height: 10), TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Quantidade de barbeiros'))])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(context, {'name': name.text.trim(), 'city': city.text.trim(), 'state': state.text.trim(), 'amount': amount.text.trim()}), child: const Text('Solicitar'))]));
+    name.dispose(); city.dispose(); state.dispose(); amount.dispose();
+    if (value == null || (value['name'] ?? '').isEmpty) return;
+    final ok = await widget.viewModel.createUnit({'unitName': value['name'], 'city': value['city'], 'state': value['state'], 'barberCount': int.tryParse(value['amount'] ?? '') ?? 1});
+    if (mounted) _message(ok ? 'Solicitação de unidade enviada.' : 'Não foi possível criar a solicitação.');
+  }
 
   Widget _surface(String heading, String description, List<Widget> children) =>
       ZenCard(
@@ -365,41 +505,62 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
         ...children
       ]));
 
-  Widget _commission(String name, String detail, String value) => Container(
-      margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: _inset(),
-      child: LayoutBuilder(
-          builder: (context, box) => box.maxWidth > 650
-              ? Row(children: [
-                  Expanded(
-                      child:
-                          _walletText(name, detail, 'Comissão atual: $value%')),
-                  SizedBox(
-                      width: 126,
-                      child: TextFormField(
-                          initialValue: value,
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          decoration: const InputDecoration(suffixText: '%'))),
-                  const SizedBox(width: 10),
-                  _action('Salvar', () => _message('Comissão de $name salva.'),
-                      green: true)
-                ])
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                      _walletText(name, detail, 'Comissão atual: $value%'),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                          initialValue: value,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(suffixText: '%')),
-                      const SizedBox(height: 9),
-                      _action(
-                          'Salvar', () => _message('Comissão de $name salva.'),
+  Widget _commission(String id, String name, String detail, String value) =>
+      Container(
+          margin: const EdgeInsets.only(top: 10),
+          padding: const EdgeInsets.all(16),
+          decoration: _inset(),
+          child: LayoutBuilder(
+              builder: (context, box) => box.maxWidth > 650
+                  ? Row(children: [
+                      Expanded(
+                          child: _walletText(
+                              name, detail, 'Comissão atual: $value%')),
+                      SizedBox(
+                          width: 126,
+                          child: TextFormField(
+                              initialValue: value,
+                              onChanged: (newValue) =>
+                                  _commissionInputs[id] = newValue,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              decoration:
+                                  const InputDecoration(suffixText: '%'))),
+                      const SizedBox(width: 10),
+                      _action('Salvar', () => _saveCommission(id, name, value),
                           green: true)
-                    ])));
+                    ])
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                          _walletText(name, detail, 'Comissão atual: $value%'),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                              initialValue: value,
+                              onChanged: (newValue) =>
+                                  _commissionInputs[id] = newValue,
+                              keyboardType: TextInputType.number,
+                              decoration:
+                                  const InputDecoration(suffixText: '%')),
+                          const SizedBox(height: 9),
+                          _action(
+                              'Salvar', () => _saveCommission(id, name, value),
+                              green: true)
+                        ])));
+
+  Future<void> _saveCommission(String id, String name, String current) async {
+    final value = num.tryParse(_commissionInputs[id] ?? current);
+    if (value == null || value < 0 || value > 100) {
+      _message('Informe uma comissão entre 0 e 100%.');
+      return;
+    }
+    final ok = await widget.viewModel.saveCommission(id, value);
+    if (mounted) {
+      _message(ok
+          ? 'Comissão de $name salva.'
+          : 'Não foi possível salvar a comissão.');
+    }
+  }
 
   Widget _filterBar(List<String> filters) => Padding(
       padding: const EdgeInsets.only(bottom: 5),

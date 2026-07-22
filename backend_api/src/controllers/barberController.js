@@ -26,7 +26,9 @@ export async function updateBarber(req, res) {
   const current = await one(supabase.from('barbers').select('*').eq('id', req.params.id), 'Barbeiro nao encontrado');
   assertShopAccess(req.user, current);
   if (req.user.role === 'barbeiro' && current.id !== req.user.id) throw new HttpError(403, 'Sem permissao para alterar este perfil');
+  const aliases = { photoUrl: 'photo_url', backgroundUrl: 'background_url', workStart: 'work_start', workEnd: 'work_end', offDays: 'off_days', commissionRate: 'commission_rate' };
   const allowed = ['name', 'phone', 'photo_url', 'background_url', 'work_start', 'work_end', 'off_days', 'commission_rate'];
-  const patch = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
+  const patch = Object.fromEntries(Object.entries(req.body).map(([key, value]) => [aliases[key] || key, value]).filter(([key]) => allowed.includes(key)));
+  if (patch.commission_rate != null && (!Number.isFinite(Number(patch.commission_rate)) || Number(patch.commission_rate) < 0 || Number(patch.commission_rate) > 100)) throw new HttpError(400, 'Comissao deve estar entre 0 e 100');
   res.json(sanitizeBarber(await query(supabase.from('barbers').update(patch).eq('id', current.id).select(columns).single())));
 }

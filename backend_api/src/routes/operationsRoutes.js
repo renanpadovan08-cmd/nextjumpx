@@ -1,0 +1,21 @@
+import { Router } from 'express';
+import * as controller from '../controllers/operationsController.js';
+import { requireAuth, requireRoles } from '../middleware/authMiddleware.js';
+
+const router = Router();
+router.use(requireAuth);
+router.get('/operations/wallet', requireRoles('admin', 'gerente', 'manager', 'owner'), controller.wallet);
+router.patch('/operations/wallet/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), controller.walletAction);
+router.get('/operations/pending', requireRoles('admin', 'gerente', 'manager', 'owner'), controller.pending);
+router.patch('/operations/pending/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), controller.pendingAction);
+router.get('/operations/commissions', requireRoles('admin', 'gerente', 'manager', 'owner'), controller.commissions);
+router.get('/operations/retention', requireRoles('admin', 'gerente', 'manager', 'owner'), controller.retention);
+router.get('/operations/cash', requireRoles('admin', 'gerente', 'manager', 'owner'), controller.cash);
+router.post('/operations/cash/entries', requireRoles('admin', 'gerente', 'manager', 'owner'), controller.createCashEntry);
+router.delete('/operations/cash/entries/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), controller.deleteCashEntry);
+router.get('/operations/profile', controller.profile);
+router.patch('/operations/profile', controller.updateProfile);
+router.get('/operations/hours', controller.hours);
+router.patch('/operations/hours', controller.updateHours);
+router.get('/operations/whatsapp', requireRoles('admin', 'gerente', 'manager', 'owner'), controller.whatsapp);
+export default router;

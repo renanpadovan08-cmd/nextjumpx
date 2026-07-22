@@ -9,7 +9,7 @@ export async function summary(req, res) {
   const barbers = await query(supabase.from('barbers').select('id,name,commission_rate').eq('shop_name', req.user.shopName));
   const ids = barbers.map((barber) => barber.id);
   const appointments = ids.length ? await query(supabase.from('appointments').select('id,barber_id,status,date,services(price)').in('barber_id', ids).gte('date', start).lt('date', endDate)) : [];
-  const completed = appointments.filter((item) => item.status === 'finalizado');
+  const completed = appointments.filter((item) => ['concluido', 'finalizado'].includes(item.status));
   const revenue = completed.reduce((sum, item) => sum + Number(item.services?.price || 0), 0);
   const byBarber = barbers.map((barber) => {
     const total = completed.filter((item) => item.barber_id === barber.id).reduce((sum, item) => sum + Number(item.services?.price || 0), 0);

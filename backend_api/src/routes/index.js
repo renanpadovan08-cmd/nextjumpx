@@ -9,8 +9,9 @@ import businessRoutes from './businessRoutes.js';
 import unitRoutes from './unitRoutes.js';
 import publicRoutes from './publicRoutes.js';
 import fixedClientRoutes from './fixedClientRoutes.js';
+import operationsRoutes from './operationsRoutes.js';
 
 const router = Router();
 router.get('/status', (_req, res) => res.json({ status: 'ok' }));
-router.use(publicRoutes, authRoutes, barberRoutes, catalogRoutes, appointmentRoutes, dashboardRoutes, adminRoutes, businessRoutes, unitRoutes, fixedClientRoutes);
+router.use(publicRoutes, authRoutes, barberRoutes, catalogRoutes, appointmentRoutes, dashboardRoutes, adminRoutes, businessRoutes, unitRoutes, fixedClientRoutes, operationsRoutes);
 export default router;
