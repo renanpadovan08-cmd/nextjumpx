@@ -610,6 +610,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                                   .toList())
                         ])));
 
+  // ignore: unused_element
   Widget _dayRow(String day, {bool closed = false}) => Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
@@ -736,6 +737,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
   }
 }
 
+// ignore: unused_element
 class _ReadOnlyField extends StatelessWidget {
   const _ReadOnlyField({required this.label, required this.value});
   final String label;
