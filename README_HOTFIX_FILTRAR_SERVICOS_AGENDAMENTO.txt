@@ -1,1 +1,0 @@
-HOTFIX: o dropdown de Novo agendamento interno agora mostra somente serviços reais cadastrados. Itens internos de cliente fixo/assinatura (bloqueio, recebimento, parcela) ficam ocultos para não poluir a lista.

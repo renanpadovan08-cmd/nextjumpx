@@ -1,1 +1,0 @@
-Hotfix: na Agenda, o card de Próximo cliente agora ignora atendimentos sem confirmação após 15 minutos do horário. Esses atendimentos descem para uma lista vermelha de aguardando ação, com botões Confirmar, Concluir e Faltou. A tela atualiza automaticamente a cada 1 minuto quando estiver em Agendamentos.
