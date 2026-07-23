@@ -70,6 +70,12 @@ class _AppShellState extends State<AppShell> {
       module: ProModule.units, viewModel: ProModuleFactory.build());
   late final AdminScreen admin = AdminScreen(viewModel: AdminFactory.build());
 
+  @override
+  void initState() {
+    super.initState();
+    if (widget.app.user!.isAdmin) index = 18;
+  }
+
   List<Widget> get screens => [
         dashboard,
         agenda,
