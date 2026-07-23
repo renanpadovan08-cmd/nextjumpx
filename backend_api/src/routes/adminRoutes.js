@@ -7,4 +7,8 @@ router.use(requireAuth, requireRoles('admin'));
 router.get('/admin/barbers', asyncHandler(controller.listShops));
 router.patch('/admin/barbers/:id/access', asyncHandler(controller.updateAccess));
 router.post('/admin/barbers/:id/password-reset', asyncHandler(controller.resetPassword));
+router.post('/admin/barbers', asyncHandler(controller.createAccount));
+router.put('/admin/barbers/:id/settings', asyncHandler(controller.updateSettings));
+router.post('/admin/barbers/:id/payment', asyncHandler(controller.markPaid));
+router.delete('/admin/barbers/:id', asyncHandler(controller.deleteAccount));
 export default router;

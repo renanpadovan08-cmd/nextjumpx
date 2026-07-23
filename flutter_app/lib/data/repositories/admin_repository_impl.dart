@@ -9,10 +9,37 @@ class AdminRepositoryImpl implements IAdminRepository {
   Future<List<Map<String, dynamic>>> listShops() => _source.listShops();
 
   @override
-  Future<Map<String, dynamic>> updateAccess(String barberId, Map<String, dynamic> value) =>
+  Future<Map<String, dynamic>> updateAccess(
+          String barberId, Map<String, dynamic> value) =>
       _source.updateAccess(barberId, value);
 
   @override
   Future<void> resetPassword(String barberId, String password) =>
       _source.resetPassword(barberId, password);
+
+  @override
+  Future<Map<String, dynamic>> createAccount(Map<String, dynamic> value) =>
+      _source.createAccount(value);
+
+  @override
+  Future<Map<String, dynamic>> updateSettings(
+          String barberId, Map<String, dynamic> value) =>
+      _source.updateSettings(barberId, value);
+
+  @override
+  Future<void> markPaid(String barberId, {String? date}) =>
+      _source.markPaid(barberId, date: date);
+
+  @override
+  Future<void> deleteAccount(String barberId) =>
+      _source.deleteAccount(barberId);
+
+  @override
+  Future<List<Map<String, dynamic>>> listUnitRequests() =>
+      _source.listUnitRequests();
+
+  @override
+  Future<Map<String, dynamic>> updateUnitRequest(
+          String requestId, String status) =>
+      _source.updateUnitRequest(requestId, status);
 }
