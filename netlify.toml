@@ -1,0 +1,19 @@
+[build]
+  command = "bash scripts/netlify-build.sh"
+  publish = "flutter_app/build/web"
+  functions = "backend_api/netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["@supabase/supabase-js", "bcrypt", "cors", "dotenv", "express", "jsonwebtoken", "serverless-http"]
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
