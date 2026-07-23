@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import * as controller from '../controllers/authController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
+import asyncHandler from '../wrapper.js';
 const router = Router();
-router.post('/auth/login', controller.login);
-router.post('/auth/signup', controller.signup);
-router.get('/auth/me', requireAuth, controller.me);
+router.post('/auth/login', asyncHandler(controller.login));
+router.post('/auth/signup', asyncHandler(controller.signup));
+router.get('/auth/me', requireAuth, asyncHandler(controller.me));
 export default router;

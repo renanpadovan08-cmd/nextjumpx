@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import * as controller from '../controllers/catalogController.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
+import asyncHandler from '../wrapper.js';
 const router = Router();
-router.get('/services', requireAuth, controller.listServices);
-router.post('/services', requireAuth, controller.createService);
-router.patch('/services/:id', requireAuth, controller.updateService);
-router.delete('/services/:id', requireAuth, controller.deleteService);
+router.get('/services', requireAuth, asyncHandler(controller.listServices));
+router.post('/services', requireAuth, asyncHandler(controller.createService));
+router.patch('/services/:id', requireAuth, asyncHandler(controller.updateService));
+router.delete('/services/:id', requireAuth, asyncHandler(controller.deleteService));
 export default router;

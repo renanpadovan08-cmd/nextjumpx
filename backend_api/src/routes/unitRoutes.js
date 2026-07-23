@@ -1,1 +1,11 @@
-import { Router } from 'express'; import * as c from '../controllers/unitController.js'; import { requireAuth,requireRoles } from '../middleware/authMiddleware.js'; const router=Router(); router.use(requireAuth); router.get('/units/requests',c.list); router.post('/units/requests',c.create); router.patch('/units/requests/:id',requireRoles('admin'),c.update); export default router;
+import { Router } from 'express';
+import * as c from '../controllers/unitController.js';
+import { requireAuth, requireRoles } from '../middleware/authMiddleware.js';
+import asyncHandler from '../wrapper.js';
+
+const router = Router();
+router.use(requireAuth);
+router.get('/units/requests', asyncHandler(c.list));
+router.post('/units/requests', asyncHandler(c.create));
+router.patch('/units/requests/:id', requireRoles('admin'), asyncHandler(c.update));
+export default router;

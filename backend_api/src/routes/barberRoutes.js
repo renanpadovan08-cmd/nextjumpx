@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import * as controller from '../controllers/barberController.js';
 import { requireAuth, requireRoles } from '../middleware/authMiddleware.js';
+import asyncHandler from '../wrapper.js';
 const router = Router();
-router.get('/barbers/public/:shopName', controller.publicBarbers);
-router.get('/barbers', requireAuth, controller.listBarbers);
-router.post('/barbers', requireAuth, requireRoles('admin', 'gerente'), controller.createBarber);
-router.patch('/barbers/:id', requireAuth, controller.updateBarber);
+router.get('/barbers/public/:shopName', asyncHandler(controller.publicBarbers));
+router.get('/barbers', requireAuth, asyncHandler(controller.listBarbers));
+router.post('/barbers', requireAuth, requireRoles('admin', 'gerente'), asyncHandler(controller.createBarber));
+router.patch('/barbers/:id', requireAuth, asyncHandler(controller.updateBarber));
 export default router;
