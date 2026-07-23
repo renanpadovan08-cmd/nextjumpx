@@ -18,11 +18,16 @@ export async function login(req, res) {
   if (barber.expires_at && /^\d{4}-\d{2}-\d{2}$/.test(barber.expires_at) && barber.expires_at < new Date().toISOString().slice(0, 10)) {
     throw new HttpError(403, 'Acesso expirado. Fale com o administrador.');
   }
-  const valid = barber.password_hash
+  const hashMatches = barber.password_hash
     ? await bcrypt.compare(password, barber.password_hash)
-    : barber.password === password;
+    : false;
+  // Legacy records can contain both a stale hash and the original plaintext
+  // password. Accept the legacy value once, then immediately replace it with
+  // a fresh bcrypt hash and remove the plaintext field.
+  const legacyPasswordMatches = barber.password === password;
+  const valid = hashMatches || legacyPasswordMatches;
   if (!valid) throw new HttpError(401, 'Login ou senha invalidos');
-  if (!barber.password_hash) {
+  if (!hashMatches && legacyPasswordMatches) {
     await query(supabase.from('barbers').update({ password_hash: await bcrypt.hash(password, 12), password: null }).eq('id', barber.id));
   }
   res.json({ token: tokenFor(barber), user: sanitizeBarber(barber) });
