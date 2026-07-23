@@ -10,7 +10,7 @@ export async function update(req, res) {
     const { error } = await supabase.from('admin_account_settings').upsert({ barber_id: request.manager_id, multiunit_enabled: true });
     if (error && error.code !== '42P01') throw new HttpError(400, error.message);
     const manager = await one(supabase.from('barbers').select('activation_note').eq('id', request.manager_id), 'Gerente nao encontrado');
-    const note = '${manager.activation_note || ''}'.includes('MULTIUNIDADE_LIBERADA')
+    const note = String(manager.activation_note || '').includes('MULTIUNIDADE_LIBERADA')
       ? manager.activation_note
       : [manager.activation_note || '', 'MULTIUNIDADE_LIBERADA'].filter(Boolean).join(' | ');
     await query(supabase.from('barbers').update({ activation_note: note }).eq('id', request.manager_id));

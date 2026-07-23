@@ -1,15 +1,16 @@
 let handlerPromise;
+const serverless = require('serverless-http');
 
 async function loadHandler() {
-  await import('dotenv/config');
-  const [serverlessModule, environmentModule, appModule] = await Promise.all([
-    import('serverless-http'),
+  // Netlify injects its environment variables directly. Loading dotenv here
+  // makes the deployed function depend on a local-only package unnecessarily.
+  const [environmentModule, appModule] = await Promise.all([
     import('../../src/config/environment.js'),
     import('../../app.js'),
   ]);
 
   environmentModule.assertRequiredEnvironment();
-  return serverlessModule.default(appModule.default);
+  return serverless(appModule.default);
 }
 
 // Netlify loads this .cjs entry point as CommonJS. Dynamic import keeps the
