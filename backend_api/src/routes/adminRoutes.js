@@ -3,7 +3,7 @@ import * as controller from '../controllers/adminController.js';
 import { requireAuth, requireRoles } from '../middleware/authMiddleware.js';
 import asyncHandler from '../wrapper.js';
 const router = Router();
-router.use(requireAuth, requireRoles('admin'));
+router.use(requireAuth, requireRoles('admin', 'barber', 'gerente'));
 router.get('/admin/barbers', asyncHandler(controller.listShops));
 router.patch('/admin/barbers/:id/access', asyncHandler(controller.updateAccess));
 router.post('/admin/barbers/:id/password-reset', asyncHandler(controller.resetPassword));
