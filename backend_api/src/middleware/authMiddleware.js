@@ -12,8 +12,16 @@ export function requireAuth(req, _res, next) {
   }
 }
 
+const normalizeRole = (role) => {
+  const value = String(role || '').trim().toLowerCase();
+  if (value === 'barbeiro') return 'barber';
+  if (value === 'admin_master') return 'admin';
+  return value;
+};
+
 export function requireRoles(...roles) {
-  return (req, _res, next) => roles.includes(req.user.role)
+  const allowedRoles = new Set(roles.map(normalizeRole));
+  return (req, _res, next) => allowedRoles.has(normalizeRole(req.user.role))
     ? next()
     : next(new HttpError(403, 'Voce nao possui permissao para esta operacao'));
 }

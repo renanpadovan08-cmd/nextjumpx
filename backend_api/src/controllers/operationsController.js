@@ -128,10 +128,37 @@ export async function deleteCashEntry(req, res) {
   res.status(204).end();
 }
 
-const profileColumns = 'id,name,login,phone,shop_name,photo_url,background_url,work_start,work_end,break_start,break_end,off_days,commission_rate,role,access_status';
+const baseProfileColumns = 'id,name,login,phone,shop_name,photo_url,background_url,work_start,work_end,commission_rate,role,access_status';
+const profileColumns = `${baseProfileColumns},break_start,break_end,off_days`;
+
+function isLegacyProfileSchemaError(message) {
+  return /column barbers\.(break_start|break_end|off_days) does not exist/i.test(String(message));
+}
+
+async function fetchBarberProfile(id) {
+  try {
+    return await one(supabase.from('barbers').select(profileColumns).eq('id', id), 'Perfil nao encontrado');
+  } catch (error) {
+    if (isLegacyProfileSchemaError(error.message)) {
+      return await one(supabase.from('barbers').select(baseProfileColumns).eq('id', id), 'Perfil nao encontrado');
+    }
+    throw error;
+  }
+}
+
+async function updateBarberProfile(id, patch) {
+  try {
+    return await query(supabase.from('barbers').update(patch).eq('id', id).select(profileColumns).single());
+  } catch (error) {
+    if (isLegacyProfileSchemaError(error.message)) {
+      return await query(supabase.from('barbers').update(patch).eq('id', id).select(baseProfileColumns).single());
+    }
+    throw error;
+  }
+}
 
 export async function profile(req, res) {
-  res.json(await one(supabase.from('barbers').select(profileColumns).eq('id', req.user.id), 'Perfil nao encontrado'));
+  res.json(await fetchBarberProfile(req.user.id));
 }
 
 export async function updateProfile(req, res) {
@@ -140,11 +167,11 @@ export async function updateProfile(req, res) {
   const patch = Object.fromEntries(Object.entries(req.body).map(([key, value]) => [aliases[key] || key, value]).filter(([key]) => allowed.includes(key)));
   if (!Object.keys(patch).length) throw new HttpError(400, 'Nenhuma alteracao de perfil informada');
   if (patch.name != null && !String(patch.name).trim()) throw new HttpError(400, 'Informe um nome valido');
-  res.json(await query(supabase.from('barbers').update(patch).eq('id', req.user.id).select(profileColumns).single()));
+  res.json(await updateBarberProfile(req.user.id, patch));
 }
 
 export async function hours(req, res) {
-  res.json(await one(supabase.from('barbers').select(profileColumns).eq('id', req.user.id), 'Perfil nao encontrado'));
+  res.json(await fetchBarberProfile(req.user.id));
 }
 
 export async function updateHours(req, res) {
@@ -155,7 +182,18 @@ export async function updateHours(req, res) {
   const validTime = (value) => value == null || value === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
   if (![patch.work_start, patch.work_end, patch.break_start, patch.break_end].every(validTime)) throw new HttpError(400, 'Horario invalido; use HH:MM');
   if (patch.work_start && patch.work_end && patch.work_start >= patch.work_end) throw new HttpError(400, 'O fim do expediente deve ser posterior ao inicio');
-  res.json(await query(supabase.from('barbers').update(patch).eq('id', req.user.id).select(profileColumns).single()));
+
+  try {
+    res.json(await query(supabase.from('barbers').update(patch).eq('id', req.user.id).select(profileColumns).single()));
+  } catch (error) {
+    if (isLegacyProfileSchemaError(error.message)) {
+      const legacyPatch = Object.fromEntries(Object.entries(patch).filter(([key]) => !['break_start', 'break_end', 'off_days'].includes(key)));
+      if (!Object.keys(legacyPatch).length) throw new HttpError(400, 'Horas de intervalo nao sao compativeis com esta versao do banco de dados');
+      res.json(await query(supabase.from('barbers').update(legacyPatch).eq('id', req.user.id).select(baseProfileColumns).single()));
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function whatsapp(req, res) {

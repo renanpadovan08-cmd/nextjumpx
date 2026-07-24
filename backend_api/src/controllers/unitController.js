@@ -1,7 +1,36 @@
 import { supabase, one, query } from '../services/supabaseService.js';
 import { HttpError } from '../utils/httpError.js';
-export async function list(req, res) { const builder = supabase.from('unit_requests').select('*').order('created_at', { ascending: false }); if (req.user.role !== 'admin') builder.eq('manager_id', req.user.id); res.json(await query(builder)); }
-export async function create(req, res) { const { unitName, city, state, barberCount, notes } = req.body; if (!unitName?.trim()) throw new HttpError(400, 'Nome da unidade e obrigatorio'); res.status(201).json(await query(supabase.from('unit_requests').insert({ manager_id: req.user.id, manager_name: req.user.name || '', manager_login: req.user.login || '', shop_name: req.user.shopName, unit_name: unitName.trim(), city: city || '', state: state || '', barber_count: Number(barberCount || 1), notes: notes || '', status: 'pendente' }).select().single())); }
+function isMissingTableError(message) {
+  return /Could not find the table/i.test(String(message));
+}
+
+export async function list(req, res) {
+  const builder = supabase.from('unit_requests').select('*').order('created_at', { ascending: false });
+  if (req.user.role !== 'admin') builder.eq('manager_id', req.user.id);
+  try {
+    res.json(await query(builder));
+  } catch (error) {
+    if (isMissingTableError(error.message)) {
+      res.json([]);
+      return;
+    }
+    throw error;
+  }
+}
+
+export async function create(req, res) {
+  const { unitName, city, state, barberCount, notes } = req.body;
+  if (!unitName?.trim()) throw new HttpError(400, 'Nome da unidade e obrigatorio');
+  try {
+    res.status(201).json(await query(supabase.from('unit_requests').insert({ manager_id: req.user.id, manager_name: req.user.name || '', manager_login: req.user.login || '', shop_name: req.user.shopName, unit_name: unitName.trim(), city: city || '', state: state || '', barber_count: Number(barberCount || 1), notes: notes || '', status: 'pendente' }).select().single()));
+  } catch (error) {
+    if (isMissingTableError(error.message)) {
+      throw new HttpError(400, 'Funcionalidade de solicitacoes de unidade indisponivel. Atualize o banco de dados.');
+    }
+    throw error;
+  }
+}
+
 export async function update(req, res) {
   const { status } = req.body;
   if (!['aprovado','rejeitado','aguardando_pagamento','bloqueado'].includes(status)) throw new HttpError(400, 'Status invalido');
@@ -15,5 +44,12 @@ export async function update(req, res) {
       : [manager.activation_note || '', 'MULTIUNIDADE_LIBERADA'].filter(Boolean).join(' | ');
     await query(supabase.from('barbers').update({ activation_note: note }).eq('id', request.manager_id));
   }
-  res.json(await query(supabase.from('unit_requests').update({ status }).eq('id', req.params.id).select().single()));
+  try {
+    res.json(await query(supabase.from('unit_requests').update({ status }).eq('id', req.params.id).select().single()));
+  } catch (error) {
+    if (isMissingTableError(error.message)) {
+      throw new HttpError(400, 'Funcionalidade de solicitacoes de unidade indisponivel. Atualize o banco de dados.');
+    }
+    throw error;
+  }
 }
