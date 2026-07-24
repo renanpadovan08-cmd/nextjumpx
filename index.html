@@ -1,44 +1,99 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ZenBarber</title>
-  <meta name="theme-color" content="#0d0d10" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="ZenBarber" />
-  <link rel="manifest" href="/manifest.json" />
-  <link rel="apple-touch-icon" href="/icon-192.png" />
-  <link rel="stylesheet" href="css/style.css?v=20260606-seguranca-etapa3" />
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=github-audit-safe"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#03130f">
+  <meta name="description" content="NextJumpX — ecossistema de softwares para transformar negócios.">
+  <title>NextJumpX</title>
+  <link rel="icon" href="images/nextjumpx-logo.jpeg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="preload" as="image" href="/images/nextjumpx-background-clean.png">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <div id="toast"></div>
-  <div id="root"></div>
+  <div class="background-art" aria-hidden="true">
+    <span class="mist mist--one"></span>
+    <span class="mist mist--two"></span>
+    <span class="mist mist--three"></span>
+    <span class="ambient-glow"></span>
+  </div>
 
-  <script src="js/core.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/auth.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/dashboard.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/components.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/cadastros.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/agenda.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/clientesFixos.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/relatorios.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/admin.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/meuNegocio.js?v=20260607-meu-negocio"></script>
-  <script src="js/modules/agendamentoPublico.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/bootstrap.js?v=20260606-seguranca-etapa3"></script>
+  <main class="site-shell">
+    <header class="hero reveal reveal--hero">
+      <div class="brand-wrap">
+        <span class="brand-halo" aria-hidden="true"></span>
+        <img src="images/nextjumpx-logo-transparent.png" class="brand-mark" alt="Logo NextJumpX">
+      </div>
+      <p class="eyebrow">ECOSSISTEMA DE SOFTWARES</p>
+      <h1>NextJump<span>X</span></h1>
+      <h2>O próximo salto que multiplica resultados.</h2>
+      <p class="subtitle">Criamos soluções inteligentes para transformar negócios.</p>
+    </header>
+
+    <section class="solutions" aria-labelledby="solutions-title">
+      <h2 id="solutions-title" class="reveal reveal--section">Escolha sua solução</h2>
+
+      <div class="product-grid">
+        <a class="product-card product-card--active reveal reveal--card-1" href="https://zenbarber.nextjumpx.com.br" aria-label="Acessar plataforma ZenBarber">
+          <span class="card-shine" aria-hidden="true"></span>
+          <p class="status status--available"><span></span>Disponível agora</p>
+          <img src="images/zenbarber.jpeg" alt="ZenBarber" class="product-logo">
+          <h3>ZenBarber</h3>
+          <h4>Gestão inteligente para barbearias</h4>
+          <p class="description">O barbeiro corta.<br>O ZenBarber administra.</p>
+          <span class="action">Acessar plataforma <b aria-hidden="true">→</b></span>
+        </a>
+
+        <article class="product-card product-card--disabled reveal reveal--card-2" aria-label="ZenBeauty em breve">
+          <span class="card-shine" aria-hidden="true"></span>
+          <p class="status status--soon"><span></span>Em breve</p>
+          <img src="images/zenbeauty.png" alt="ZenBeauty" class="product-logo">
+          <h3>ZenBeauty</h3>
+          <h4>Gestão inteligente para salões</h4>
+          <p class="description">Beleza, equilíbrio e controle em uma única plataforma.</p>
+          <span class="action action--disabled">Em desenvolvimento</span>
+        </article>
+      </div>
+    </section>
+
+    <footer class="reveal reveal--footer">NextJumpX © 2026</footer>
+  </main>
 
   <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", function () {
-        navigator.serviceWorker.register("/sw.js").catch(function (error) {
-          console.warn("ZenBarber PWA: service worker não registrado", error);
-        });
-      });
-    }
+    (() => {
+      const root = document.documentElement;
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      if (!reduceMotion && window.matchMedia('(pointer: fine)').matches) {
+        let frame = 0;
+        window.addEventListener('pointermove', (event) => {
+          cancelAnimationFrame(frame);
+          frame = requestAnimationFrame(() => {
+            const x = (event.clientX / window.innerWidth - 0.5) * 2;
+            const y = (event.clientY / window.innerHeight - 0.5) * 2;
+            root.style.setProperty('--pointer-x', `${x.toFixed(3)}`);
+            root.style.setProperty('--pointer-y', `${y.toFixed(3)}`);
+          });
+        }, { passive: true });
+      }
+
+      if ('IntersectionObserver' in window && !reduceMotion) {
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('is-visible');
+              observer.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.12 });
+        document.querySelectorAll('.reveal').forEach((item) => observer.observe(item));
+      } else {
+        document.querySelectorAll('.reveal').forEach((item) => item.classList.add('is-visible'));
+      }
+    })();
   </script>
 </body>
 </html>
