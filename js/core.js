@@ -1,9 +1,3 @@
-if (typeof bcrypt === 'undefined') {
-    const script = document.createElement('script');
-    script.src = "https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcryptjs.min.js";
-    script.onload = () => console.log("BCrypt carregado com sucesso!");
-    document.head.appendChild(script);
-}
 // Configuração segura para GitHub/auditoria.
 // Para rodar localmente, copie js/config.example.js para js/config.js e preencha os valores reais.
 const ZENBARBER_CONFIG = window.ZENBARBER_CONFIG || {};
@@ -50,40 +44,24 @@ async function migrateLegacyPasswordIfNeeded(user, plainPassword){
     await db.from("barbers").update({password_hash:hash,must_change_password:false}).eq("id",user.id);
   }
 }
-async function verifyBarberPassword(user, plainPassword) {
-  if (!user) return false;
-
-  // 1. Verificar se é BCrypt (Hashes do Supabase/Auth começam com $2)
-  if (user.password_hash && user.password_hash.startsWith('$2')) {
-    try {
-      // Tenta pegar a biblioteca (pode estar em window.bcrypt ou dcodeIO.bcrypt)
-      const b = window.bcrypt || (window.dcodeIO && window.dcodeIO.bcrypt);
-      
-      if (b) {
-        return await b.compare(plainPassword, user.password_hash);
-      } else {
-        // Se a biblioteca ainda não carregou, espera 500ms e tenta uma vez
-        console.warn("Aguardando carregamento do BCrypt...");
-        await new Promise(res => setTimeout(res, 500));
-        const b2 = window.bcrypt || (window.dcodeIO && window.dcodeIO.bcrypt);
-        if (b2) return await b2.compare(plainPassword, user.password_hash);
+async function verifyBarberPassword(user, plainPassword){
+  if(!user) return false;
+  if(user.password_hash){
+    // Suporte a BCrypt (começando com $2a$, $2b$, $2x$ ou $2y$)
+    if(user.password_hash.match(/^\$2[aby]\$/)) {
+      try {
+        if(typeof bcrypt !== 'undefined') {
+          return await bcrypt.compare(plainPassword, user.password_hash);
+        }
+      } catch(e) {
+        console.error('Erro ao verificar BCrypt:', e);
       }
-    } catch (e) {
-      console.error('Erro na comparação BCrypt:', e);
     }
-  }
-
-  // 2. Fallback para SHA256 (prefixo zb_sha256_v1$)
-  if (user.password_hash && user.password_hash.startsWith(PASSWORD_HASH_PREFIX)) {
+    // Fallback para SHA256 (prefixo zb_sha256_v1$)
     const expected = await makePasswordHash(user.login, plainPassword);
     return user.password_hash === expected;
   }
-
-  // 3. Fallback para texto puro (Senhas antigas no banco)
-  const userPass = String(user.password || "").trim();
-  const inputPass = String(plainPassword || "").trim();
-  
-  return userPass === inputPass && userPass !== "";
+  return String(user.password||"") === String(plainPassword||"");
 }
 
 // Segurança etapa 3: o acesso Admin deve existir no banco com role admin_master/admin.
