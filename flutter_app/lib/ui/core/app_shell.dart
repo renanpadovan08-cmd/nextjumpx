@@ -36,12 +36,12 @@ class _AppShellState extends State<AppShell> {
   bool negocioOpen = true;
   bool suporteOpen = false;
 
-  late final DashboardScreen dashboard = DashboardFactory.build();
+  late final DashboardScreen dashboard;
   late final AgendaScreen agenda = AgendaFactory.build(widget.app.user!);
   late final CatalogScreen catalog = CatalogFactory.build(widget.app.user!);
   late final BarbersScreen barbers = BarbersFactory.build(widget.app.user!);
-  late final FixedClientsScreen fixedClients =
-      FixedClientsScreen(viewModel: FeatureFactories.fixedClients(), user: widget.app.user!);
+  late final FixedClientsScreen fixedClients = FixedClientsScreen(
+      viewModel: FeatureFactories.fixedClients(), user: widget.app.user!);
   late final OperationsScreen operations =
       OperationsScreen(viewModel: FeatureFactories.operations());
   late final PublicBookingScreen publicBooking =
@@ -73,6 +73,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
+    dashboard = DashboardFactory.build(userName: widget.app.user!.name);
     if (widget.app.user!.isAdmin) index = 18;
   }
 

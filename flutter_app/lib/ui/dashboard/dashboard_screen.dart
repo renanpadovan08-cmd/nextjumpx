@@ -5,8 +5,11 @@ import '../core/widgets/zen_card.dart';
 import 'view_models/dashboard_view_model.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key, required this.viewModel});
+  const DashboardScreen(
+      {super.key, required this.viewModel, required this.userName});
   final DashboardViewModel viewModel;
+  final String userName;
+
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
@@ -32,6 +35,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   String money(num value) =>
       'R\$ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
+
+  String _greeting() {
+    final brasiliaTime =
+        DateTime.now().toUtc().subtract(const Duration(hours: 3));
+    final hour = brasiliaTime.hour;
+    if (hour >= 18) return 'Boa noite';
+    if (hour >= 12) return 'Boa tarde';
+    return 'Bom dia';
+  }
+
+  String get _heroTitle {
+    final name = widget.userName.trim();
+    final displayName = name.isEmpty ? 'Renan' : name;
+    return '${_greeting()}, $displayName 👋';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -137,8 +155,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1.05)),
         const SizedBox(height: 7),
-        const Text('Bom dia, Renan 👋',
-            style: TextStyle(
+        Text(_heroTitle,
+            style: const TextStyle(
                 fontSize: 27, fontWeight: FontWeight.w900, letterSpacing: -.7)),
         const SizedBox(height: 7),
         const Text(
