@@ -48,20 +48,63 @@ export async function availability(req, res) {
   res.json(appointments);
 }
 
+const normalizeAppointmentKey = (key) => {
+  switch (key) {
+    case 'barberId':
+      return 'barber_id';
+    case 'serviceId':
+      return 'service_id';
+    case 'clientName':
+      return 'client_name';
+    case 'clientPhone':
+      return 'client_phone';
+    case 'reminderDays':
+      return 'reminder_days';
+    case 'reminderDate':
+      return 'reminder_date';
+    default:
+      return key;
+  }
+};
+
 export async function createAppointment(req, res) {
-  const { barberId, serviceId, clientName, clientPhone, date, time, status = 'agendado' } = req.body;
+  const {
+    barberId,
+    serviceId,
+    clientName,
+    clientPhone,
+    date,
+    time,
+    status = 'agendado',
+    reminderDays,
+    reminderDate,
+  } = req.body;
   if (![barberId, serviceId, clientName, date, time].every(Boolean)) throw new HttpError(400, 'Dados incompletos para o agendamento');
   if (!validStatuses.includes(status)) throw new HttpError(400, 'Status de agendamento invalido');
   await ensureBarberAccess(req.user, barberId);
   await assertNoConflict({ barberId, serviceId, date, time, allowFitIn: status === 'encaixe' });
-  res.status(201).json(await query(supabase.from('appointments').insert({ barber_id: barberId, service_id: serviceId, client_name: clientName.trim(), client_phone: clientPhone?.trim() || '', date, time, status }).select('*,services(name,price,duration)').single()));
+  res.status(201).json(await query(supabase.from('appointments').insert({
+    barber_id: barberId,
+    service_id: serviceId,
+    client_name: clientName.trim(),
+    client_phone: clientPhone?.trim() || '',
+    date,
+    time,
+    status,
+    reminder_days: reminderDays,
+    reminder_date: reminderDate,
+  }).select('*,services(name,price,duration),barbers(name,shop_name)').single()));
 }
 
 export async function updateAppointment(req, res) {
   const current = await one(supabase.from('appointments').select('*,barbers(shop_name)').eq('id', req.params.id), 'Agendamento nao encontrado');
   assertShopAccess(req.user, { id: current.barber_id, shop_name: current.barbers.shop_name });
-  const allowed = ['barber_id', 'service_id', 'client_name', 'client_phone', 'date', 'time', 'status'];
-  const patch = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
+  const allowed = ['barber_id', 'service_id', 'client_name', 'client_phone', 'date', 'time', 'status', 'reminder_days', 'reminder_date', 'cancel_note', 'barberId', 'serviceId', 'clientName', 'clientPhone'];
+  const patch = Object.fromEntries(
+    Object.entries(req.body)
+      .filter(([key]) => allowed.includes(key))
+      .map(([key, value]) => [normalizeAppointmentKey(key), value]),
+  );
   if (patch.status && !validStatuses.includes(patch.status)) throw new HttpError(400, 'Status de agendamento invalido');
   if (patch.barber_id) await ensureBarberAccess(req.user, patch.barber_id);
   if (patch.barber_id || patch.date || patch.time || patch.service_id) {
@@ -74,7 +117,7 @@ export async function updateAppointment(req, res) {
       allowFitIn: (patch.status || current.status) === 'encaixe',
     });
   }
-  res.json(await query(supabase.from('appointments').update(patch).eq('id', current.id).select('*,services(name,price,duration)').single()));
+  res.json(await query(supabase.from('appointments').update(patch).eq('id', current.id).select('*,services(name,price,duration),barbers(name,shop_name)').single()));
 }
 
 export async function deleteAppointment(req, res) {
