@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="ZenBarber" />
-  <link rel="manifest" href="manifest.json" />
+  <link id="appManifest" />
   <link rel="apple-touch-icon" href="icon-192.png" />
   <link rel="stylesheet" href="css/style.css?v=20260727-assets-local-v2" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -33,7 +33,15 @@
   <script src="js/bootstrap.js?v=20260606-seguranca-etapa3"></script>
 
   <script>
-    if ("serviceWorker" in navigator) {
+    const webProtocol = location.protocol === "http:" || location.protocol === "https:";
+
+    if (webProtocol) {
+      const manifestLink = document.getElementById("appManifest");
+      manifestLink.href = "manifest.json";
+      manifestLink.rel = "manifest";
+    }
+
+    if (webProtocol && "serviceWorker" in navigator) {
       window.addEventListener("load", function () {
         navigator.serviceWorker.register("sw.js").catch(function (error) {
           console.warn("ZenBarber PWA: service worker não registrado", error);

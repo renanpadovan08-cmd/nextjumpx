@@ -40,7 +40,11 @@ test("PWA usa caminhos relativos e fica isolado no diretório do ZenBarber",()=>
   const manifest = JSON.parse(read(zenbarberRoot,"manifest.json"));
   const serviceWorker = read(zenbarberRoot,"sw.js");
 
+  assert.doesNotMatch(html,/<link rel="manifest"/);
+  assert.match(html,/const webProtocol = location\.protocol === "http:" \|\| location\.protocol === "https:"/);
+  assert.match(html,/if \(webProtocol\) \{/);
   assert.match(html,/serviceWorker\.register\("sw\.js"\)/);
+  assert.match(html,/if \(webProtocol && "serviceWorker" in navigator\)/);
   assert.equal(manifest.start_url,"./");
   assert.equal(manifest.scope,"./");
   assert.ok(manifest.icons.every((icon)=>!icon.src.startsWith("/")));
