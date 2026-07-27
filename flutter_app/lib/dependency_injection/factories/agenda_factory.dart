@@ -7,10 +7,17 @@ import '../app_dependencies.dart';
 
 class AgendaFactory {
   const AgendaFactory._();
-  static AgendaScreen build(AuthUserDto user) => AgendaScreen(
-      user: user,
-      viewModel:
-          AgendaViewModel(AppDependencies.instance.appointmentRepository),
-      catalog: CatalogViewModel(AppDependencies.instance.catalogRepository),
-      barbers: BarbersViewModel(AppDependencies.instance.barberRepository));
+
+  static AgendaScreen build(
+    AuthUserDto user, {
+    BarbersViewModel? barbers,
+  }) =>
+      AgendaScreen(
+        user: user,
+        viewModel:
+            AgendaViewModel(AppDependencies.instance.appointmentRepository),
+        catalog: CatalogViewModel(AppDependencies.instance.catalogRepository),
+        barbers: barbers ??
+            BarbersViewModel(AppDependencies.instance.barberRepository),
+      );
 }

@@ -36,13 +36,17 @@ class _AppShellState extends State<AppShell> {
   bool negocioOpen = true;
   bool suporteOpen = false;
 
+  late final teamBarbers = BarbersFactory.viewModel();
   late final DashboardScreen dashboard;
-  late final AgendaScreen agenda = AgendaFactory.build(widget.app.user!);
-  late final CatalogScreen catalog = CatalogFactory.build(widget.app.user!);
-  late final BarbersScreen barbers = BarbersFactory.build(widget.app.user!);
+  late final AgendaScreen agenda =
+      AgendaFactory.build(widget.app.user!, barbers: teamBarbers);
+  late final CatalogScreen catalog =
+      CatalogFactory.build(widget.app.user!, barbers: teamBarbers);
+  late final BarbersScreen barbers =
+      BarbersFactory.build(widget.app.user!, viewModel: teamBarbers);
   late final FixedClientsScreen fixedClients = FixedClientsScreen(
       viewModel: FeatureFactories.fixedClients(),
-      barbers: FeatureFactories.fixedClientsBarbers(),
+      barbers: teamBarbers,
       user: widget.app.user!);
   late final OperationsScreen operations =
       OperationsScreen(viewModel: FeatureFactories.operations());

@@ -5,7 +5,16 @@ import '../../ui/barbers/view_models/barbers_view_model.dart';
 
 class BarbersFactory {
   const BarbersFactory._();
-  static BarbersScreen build(AuthUserDto user) => BarbersScreen(
-      user: user,
-      viewModel: BarbersViewModel(AppDependencies.instance.barberRepository));
+
+  static BarbersViewModel viewModel() =>
+      BarbersViewModel(AppDependencies.instance.barberRepository);
+
+  static BarbersScreen build(
+    AuthUserDto user, {
+    BarbersViewModel? viewModel,
+  }) =>
+      BarbersScreen(
+        user: user,
+        viewModel: viewModel ?? BarbersFactory.viewModel(),
+      );
 }

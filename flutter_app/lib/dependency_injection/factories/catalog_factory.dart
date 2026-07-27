@@ -6,8 +6,15 @@ import '../../ui/barbers/view_models/barbers_view_model.dart';
 
 class CatalogFactory {
   const CatalogFactory._();
-  static CatalogScreen build(AuthUserDto user) => CatalogScreen(
-      user: user,
-      viewModel: CatalogViewModel(AppDependencies.instance.catalogRepository),
-      barbers: BarbersViewModel(AppDependencies.instance.barberRepository));
+
+  static CatalogScreen build(
+    AuthUserDto user, {
+    BarbersViewModel? barbers,
+  }) =>
+      CatalogScreen(
+        user: user,
+        viewModel: CatalogViewModel(AppDependencies.instance.catalogRepository),
+        barbers: barbers ??
+            BarbersViewModel(AppDependencies.instance.barberRepository),
+      );
 }
