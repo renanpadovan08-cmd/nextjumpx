@@ -32,6 +32,9 @@ class OperationsRepositoryImpl implements IOperationsRepository {
   @override
   Future<void> deleteCashEntry(String id) => _source.deleteCashEntry(id);
   @override
+  Future<dynamic> createCashClosure(Map<String, dynamic> body) =>
+      _source.createCashClosure(body);
+  @override
   Future<dynamic> createRetentionAction(Map<String, dynamic> body) =>
       _source.createRetentionAction(body);
 }

@@ -228,7 +228,7 @@ class _AdminScreenState extends State<AdminScreen> {
                 _button('Papel', () => _roleDialog(item, role)),
                 _button('Validade', () => _expiryDialog(item)),
                 _button('Nova senha', () => _passwordDialog(item)),
-                _button('Excluir', () => _deleteDialog(item), danger: true),
+                _button('Desativar', () => _deleteDialog(item), danger: true),
               ]));
 
   Widget _unitRequestsCard() => ZenCard(
@@ -506,9 +506,9 @@ class _AdminScreenState extends State<AdminScreen> {
     final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-                title: const Text('Excluir barbearia?'),
+                title: const Text('Desativar barbearia?'),
                 content: Text(
-                    'A conta ${item['shop_name'] ?? ''} sera removida permanentemente.'),
+                    'A conta ${item['shop_name'] ?? ''} será bloqueada sem apagar agenda, caixa ou histórico.'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -517,13 +517,14 @@ class _AdminScreenState extends State<AdminScreen> {
                       onPressed: () => Navigator.pop(context, true),
                       style: FilledButton.styleFrom(
                           backgroundColor: ZenColors.red),
-                      child: const Text('Excluir'))
+                      child: const Text('Desativar'))
                 ]));
     if (confirm != true) return;
     final ok = await widget.viewModel.deleteAccount('${item['id']}');
     if (mounted) {
-      _snack(
-          ok ? 'Barbearia excluida.' : 'Nao foi possivel excluir a barbearia.');
+      _snack(ok
+          ? 'Barbearia desativada.'
+          : 'Nao foi possivel desativar a barbearia.');
     }
   }
 

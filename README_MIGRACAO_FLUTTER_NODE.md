@@ -53,8 +53,8 @@ login válido. Senhas antigas em texto puro também são migradas e removidas.
 
 Antes do corte de produção:
 
-1. Aplique os SQLs de atualização que acompanham esta branch no mesmo Supabase da
-   instalação atual, incluindo `SQL_FLUTTER_OPERATIONS_COMPLETE.sql`.
+1. Aplique `SQL_MIGRACAO_DEFINITIVA_FLUTTER_NODE.sql` no mesmo Supabase da
+   instalação atual. Ele consolida as alterações necessárias sem remover dados.
 2. Configure no backend `JWT_SECRET`, `SUPABASE_URL`,
    `SUPABASE_SERVICE_ROLE_KEY` e `CORS_ORIGIN`.
 3. Gere o Flutter com `API_BASE_URL=/api` quando frontend e API estiverem no

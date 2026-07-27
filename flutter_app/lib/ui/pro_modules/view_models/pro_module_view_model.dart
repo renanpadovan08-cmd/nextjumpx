@@ -75,6 +75,18 @@ class ProModuleViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> createCashClosure(String month) async {
+    try {
+      await _repository.createCashClosure({'month': month});
+      await load(ProModule.cash);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> createRetentionAction(Map<String, dynamic> body) async {
     try {
       await _repository.createRetentionAction(body);

@@ -7,5 +7,6 @@ abstract interface class IOperationsRepository {
   Future<dynamic> createUnit(Map<String, dynamic> body);
   Future<dynamic> createCashEntry(Map<String, dynamic> body);
   Future<void> deleteCashEntry(String id);
+  Future<dynamic> createCashClosure(Map<String, dynamic> body);
   Future<dynamic> createRetentionAction(Map<String, dynamic> body);
 }

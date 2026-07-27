@@ -614,11 +614,31 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
         ...List<Map<String, dynamic>>.from(
                 (_object['manual'] as List?) ?? const [])
             .map(_cashEntry),
+        if (((_object['closures'] as List?) ?? const []).isNotEmpty) ...[
+          const SizedBox(height: 18),
+          const Text('Fechamentos realizados',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+          ...List<Map<String, dynamic>>.from(
+                  (_object['closures'] as List?) ?? const [])
+              .map((closure) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.lock_clock_outlined),
+                    title: Text(
+                        '${closure['period_start']} a ${closure['period_end']}'),
+                    subtitle:
+                        Text('Saldo fechado: ${_money(closure['balance'])}'),
+                  )),
+        ],
         const SizedBox(height: 12),
-        Align(
-            alignment: Alignment.centerRight,
-            child: _action('Adicionar lançamento', _createCashDialog,
-                green: true)),
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _action('Fechar mês', _closeCash),
+            _action('Adicionar lançamento', _createCashDialog, green: true),
+          ],
+        ),
       ]);
 
   Widget _cashEntry(Map<String, dynamic> entry) => Container(
@@ -637,7 +657,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
             IconButton(
               onPressed: () => _deleteCashEntry('${entry['id']}'),
               icon: const Icon(Icons.delete_outline, color: ZenColors.red),
-              tooltip: 'Excluir lançamento',
+              tooltip: 'Cancelar lançamento',
             ),
           ],
         ),
@@ -647,15 +667,16 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Excluir lançamento?'),
-        content: const Text('O saldo será recalculado imediatamente.'),
+        title: const Text('Cancelar lançamento?'),
+        content: const Text(
+            'O lançamento será preservado no histórico de auditoria e retirado do saldo.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancelar')),
           FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('Excluir')),
+              child: const Text('Cancelar lançamento')),
         ],
       ),
     );
@@ -663,8 +684,35 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     final ok = await widget.viewModel.deleteCashEntry(id);
     if (mounted) {
       _message(ok
-          ? 'Lançamento excluído.'
-          : 'Não foi possível excluir o lançamento.');
+          ? 'Lançamento cancelado.'
+          : 'Não foi possível cancelar o lançamento.');
+    }
+  }
+
+  Future<void> _closeCash() async {
+    final month = '${_object['month'] ?? ''}';
+    if (month.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Fechar caixa de $month?'),
+        content: const Text(
+            'Será criado um registro com entradas, saídas e saldo atual do período.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Voltar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Confirmar fechamento')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final ok = await widget.viewModel.createCashClosure(month);
+    if (mounted) {
+      _message(
+          ok ? 'Fechamento registrado.' : 'Não foi possível fechar o caixa.');
     }
   }
 
