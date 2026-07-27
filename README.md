@@ -7,19 +7,11 @@ Este repositório reúne os dois sites na mesma branch:
 
 ## Netlify
 
-Use a mesma branch `main` em dois projetos:
+Publique a raiz do repositório (`.`) no projeto do domínio `nextjumpx.com.br`.
+A landing abre o ZenBarber no mesmo domínio, pelo caminho `/zenbarber/`.
 
-| Projeto | Diretório de publicação |
-| --- | --- |
-| Landing NextJumpX | `.` |
-| ZenBarber | `zenbarber` |
-
-O projeto do domínio `zenbarber.nextjumpx.com.br` deve publicar exclusivamente
-a pasta `zenbarber`. A landing continua publicando a raiz do repositório.
-
-O ZenBarber também pode ser aberto em `/zenbarber/` durante desenvolvimento
-local. Manifest, ícones e Service Worker usam caminhos relativos para funcionar
-nos dois modos.
+O Manifest, os ícones e o Service Worker do ZenBarber usam caminhos relativos,
+mantendo o PWA isolado dentro desse diretório.
 
 ## Validação do login
 

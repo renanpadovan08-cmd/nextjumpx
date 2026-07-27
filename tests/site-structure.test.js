@@ -15,7 +15,8 @@ test("mantém landing e ZenBarber em pontos de entrada separados",()=>{
   const zenbarberHtml = read(zenbarberRoot,"index.html");
 
   assert.match(landingHtml,/<title>NextJumpX<\/title>/);
-  assert.match(landingHtml,/https:\/\/zenbarber\.nextjumpx\.com\.br/);
+  assert.match(landingHtml,/href="\/zenbarber\/"/);
+  assert.doesNotMatch(landingHtml,/href="https:\/\/zenbarber\.nextjumpx\.com\.br/);
   assert.match(zenbarberHtml,/<title>ZenBarber<\/title>/);
   assert.ok(!fs.existsSync(path.join(repoRoot,"js")),"os scripts do ZenBarber não devem permanecer na raiz");
 });
