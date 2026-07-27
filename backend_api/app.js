@@ -2,23 +2,17 @@ import cors from 'cors';
 import express from 'express';
 import routes from './src/routes/index.js';
 import { errorHandler, notFound } from './src/middleware/errorHandler.js';
+import { isCorsOriginAllowed } from './src/services/corsPolicy.js';
 
 const app = express();
-const origins = (process.env.CORS_ORIGIN || '').split(',').map((value) => value.trim()).filter(Boolean);
 
 app.use(cors({
   origin: function (origin, callback) {
-    // Permite requisições sem origin (como mobile apps ou curl)
-    if (!origin) return callback(null, true);
-    
-    // Verifica se a origem está na lista do .env ou se é localhost
-    const isAllowed = origins.indexOf(origin) !== -1 || origin.startsWith('http://localhost:');
-    
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      callback(new Error('Não permitido pelo CORS'));
-    }
+    if (isCorsOriginAllowed(origin)) return callback(null, true);
+
+    const error = new Error('Não permitido pelo CORS');
+    error.status = 403;
+    return callback(error);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
