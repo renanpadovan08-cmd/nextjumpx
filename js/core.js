@@ -14,6 +14,42 @@ const ADMIN_BARBER_COLUMNS = "id,name,login,phone,shop_name,role,photo_url,backg
 // Observação: o ideal definitivo é Supabase Auth ou backend/Edge Function com bcrypt/argon2.
 // Este hotfix remove senha aberta do fluxo e migra senhas antigas no primeiro login.
 const PASSWORD_HASH_PREFIX = "zb_sha256_v1$";
+const BCRYPT_SCRIPT_SRC = "https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcryptjs.min.js";
+let bcryptLoaderPromise = null;
+
+function browserBcrypt(){
+  return window.bcrypt || window.dcodeIO?.bcrypt || null;
+}
+
+function loadBrowserBcrypt(){
+  const loaded = browserBcrypt();
+  if(loaded) return Promise.resolve(loaded);
+  if(bcryptLoaderPromise) return bcryptLoaderPromise;
+
+  bcryptLoaderPromise = new Promise((resolve,reject)=>{
+    const existing = document.querySelector(`script[src="${BCRYPT_SCRIPT_SRC}"]`);
+    const script = existing || document.createElement("script");
+    const finish = ()=>{
+      const bcryptApi = browserBcrypt();
+      if(bcryptApi) resolve(bcryptApi);
+      else reject(new Error("A biblioteca BCrypt foi carregada, mas não ficou disponível."));
+    };
+
+    script.addEventListener("load",finish,{once:true});
+    script.addEventListener("error",()=>reject(new Error("Não foi possível carregar a biblioteca BCrypt.")),{once:true});
+    if(!existing){
+      script.src = BCRYPT_SCRIPT_SRC;
+      script.async = true;
+      document.head.appendChild(script);
+    }
+  }).catch(error=>{
+    bcryptLoaderPromise = null;
+    throw error;
+  });
+
+  return bcryptLoaderPromise;
+}
+
 async function sha256Hex(text){
   const data = new TextEncoder().encode(String(text));
   const buf = await crypto.subtle.digest("SHA-256", data);
@@ -46,21 +82,23 @@ async function migrateLegacyPasswordIfNeeded(user, plainPassword){
 }
 async function verifyBarberPassword(user, plainPassword){
   if(!user) return false;
-  if(user.password_hash){
-    // Suporte a BCrypt (começando com $2a$, $2b$, $2x$ ou $2y$)
-    if(user.password_hash.match(/^\$2[aby]\$/)) {
-      try {
-        if(typeof bcrypt !== 'undefined') {
-          return await bcrypt.compare(plainPassword, user.password_hash);
-        }
-      } catch(e) {
-        console.error('Erro ao verificar BCrypt:', e);
-      }
+  const passwordHash = String(user.password_hash||"");
+  if(passwordHash.startsWith("$2")){
+    try{
+      const bcryptApi = await loadBrowserBcrypt();
+      return await bcryptApi.compare(plainPassword,passwordHash);
+    }catch(e){
+      console.error("Erro ao verificar BCrypt:",e);
+      return false;
     }
-    // Fallback para SHA256 (prefixo zb_sha256_v1$)
-    const expected = await makePasswordHash(user.login, plainPassword);
-    return user.password_hash === expected;
   }
+  if(passwordHash.startsWith(PASSWORD_HASH_PREFIX)){
+    const expected = await makePasswordHash(user.login, plainPassword);
+    return passwordHash === expected;
+  }
+  // Só usa a senha legada quando não existe hash. Um hash desconhecido nunca
+  // deve cair na comparação em texto puro.
+  if(passwordHash) return false;
   return String(user.password||"") === String(plainPassword||"");
 }
 
