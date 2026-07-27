@@ -1,21 +1,29 @@
 import bcrypt from 'bcrypt';
+import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { supabase, one, query } from '../services/supabaseService.js';
 import { sanitizeBarber } from '../services/accessService.js';
 import { legacyHashPrefix, legacyPasswordHash } from '../services/passwordPolicy.js';
 import { HttpError } from '../utils/httpError.js';
 
-const safeColumns = 'id,name,login,phone,shop_name,role,photo_url,background_url,work_start,work_end,off_days,commission_rate,access_status,expires_at,created_at,activation_note,must_change_password';
+const safeColumns = 'id,name,login,phone,shop_name,shop_id,role,photo_url,background_url,work_start,work_end,lunch_start,lunch_end,off_days,commission_rate,access_status,expires_at,created_at,activation_note,must_change_password';
 
 function tokenFor(barber) {
-  return jwt.sign({ id: barber.id, role: barber.role === 'admin_master' ? 'admin' : barber.role, shopName: barber.shop_name }, process.env.JWT_SECRET, { expiresIn: '8h' });
+  return jwt.sign({
+    id: barber.id,
+    name: barber.name,
+    login: barber.login,
+    role: barber.role === 'admin_master' ? 'admin' : barber.role,
+    shopName: barber.shop_name,
+    shopId: barber.shop_id,
+  }, process.env.JWT_SECRET, { expiresIn: '8h' });
 }
 
 export async function login(req, res) {
   const { login: inputLogin, password } = req.body;
   if (!inputLogin || !password) throw new HttpError(400, 'Informe login e senha');
   const barber = await one(supabase.from('barbers').select('*').eq('login', inputLogin.trim()).limit(1), 'Login ou senha invalidos');
-  if (barber.access_status !== 'ativo') throw new HttpError(403, 'Acesso pendente, bloqueado ou expirado');
+  if (!['ativo', 'active'].includes(barber.access_status)) throw new HttpError(403, 'Acesso pendente, bloqueado ou expirado');
   if (barber.expires_at && /^\d{4}-\d{2}-\d{2}$/.test(barber.expires_at) && barber.expires_at < new Date().toISOString().slice(0, 10)) {
     throw new HttpError(403, 'Acesso expirado. Fale com o administrador.');
   }
@@ -44,7 +52,9 @@ export async function signup(req, res) {
   }
   if (String(password).length < 8) throw new HttpError(400, 'A senha precisa ter ao menos 8 caracteres');
   if (!['mensal', 'trimestral', 'anual'].includes(plan)) throw new HttpError(400, 'Plano selecionado invalido');
+  const id = randomUUID();
   const data = await query(supabase.from('barbers').insert({
+    id, shop_id: id,
     name: name.trim(), login: inputLogin.trim().toLowerCase(), password_hash: await bcrypt.hash(password, 12),
     phone: phone?.trim() || '', shop_name: shopName.trim(), role: 'gerente', access_status: 'pendente', must_change_password: false,
     activation_note: `Plano escolhido: ${plan} | aguardando contato/liberacao`,

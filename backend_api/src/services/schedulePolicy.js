@@ -28,8 +28,8 @@ function fallbackSchedule(barber, index) {
     open: !legacyDaysOff.includes(String(index)),
     start: barber?.work_start || DEFAULT_OPEN,
     end: barber?.work_end || DEFAULT_CLOSE,
-    break_start: barber?.break_start || '',
-    break_end: barber?.break_end || '',
+    break_start: barber?.break_start || barber?.lunch_start || '',
+    break_end: barber?.break_end || barber?.lunch_end || '',
   };
 }
 

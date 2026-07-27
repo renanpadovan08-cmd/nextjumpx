@@ -1,8 +1,9 @@
 import bcrypt from 'bcrypt';
+import { randomUUID } from 'node:crypto';
 import { supabase, one, query } from '../services/supabaseService.js';
 import { HttpError } from '../utils/httpError.js';
 
-const barberColumns = 'id,name,login,phone,shop_name,role,access_status,expires_at,activation_note,created_at';
+const barberColumns = 'id,name,login,phone,shop_name,shop_id,role,access_status,expires_at,activation_note,created_at';
 const settingFields = ['monthly_fee', 'due_day', 'subscription_status', 'payment_method', 'plan_started_at', 'plan_ends_at', 'last_payment_at', 'bonus_note', 'internal_note', 'multiunit_enabled'];
 const accountFields = ['name', 'login', 'phone', 'shop_name', 'role', 'access_status', 'expires_at', 'activation_note'];
 
@@ -60,8 +61,9 @@ export async function createAccount(req, res) {
   if (String(password).length < 8) throw new HttpError(400, 'A senha precisa ter ao menos 8 caracteres');
   if (!['admin', 'admin_master', 'gerente', 'manager', 'owner', 'barbeiro', 'barber'].includes(role)) throw new HttpError(400, 'Papel de acesso invalido');
   if (!['ativo', 'pendente', 'bloqueado', 'rejeitado', 'aguardando_pagamento'].includes(access_status)) throw new HttpError(400, 'Status de acesso invalido');
+  const id = randomUUID();
   const account = await query(supabase.from('barbers').insert({
-    name: String(name).trim(), login: String(login).trim().toLowerCase(), password_hash: await bcrypt.hash(password, 12), phone: String(phone).trim(), shop_name: String(shop_name).trim(), role, access_status,
+    id, shop_id: id, name: String(name).trim(), login: String(login).trim().toLowerCase(), password_hash: await bcrypt.hash(password, 12), phone: String(phone).trim(), shop_name: String(shop_name).trim(), role, access_status,
   }).select(barberColumns).single());
   const settings = pick(req.body, settingFields);
   if (Object.keys(settings).length) await query(supabase.from('admin_account_settings').upsert({ barber_id: account.id, ...settings }));
@@ -85,6 +87,9 @@ export async function markPaid(req, res) {
 
 export async function deleteAccount(req, res) {
   await one(supabase.from('barbers').select('id').eq('id', req.params.id), 'Barbearia nao encontrada');
-  await query(supabase.from('barbers').delete().eq('id', req.params.id));
+  await query(supabase.from('barbers').update({
+    access_status: 'bloqueado',
+    activation_note: 'Conta desativada pelo administrador',
+  }).eq('id', req.params.id));
   res.status(204).end();
 }

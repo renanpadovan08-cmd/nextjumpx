@@ -1,4 +1,9 @@
 import { supabase, one, query } from '../services/supabaseService.js';
+import {
+  isAdminRole,
+  isBarberRole,
+  sameShop,
+} from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
 import { businessNow } from '../services/schedulePolicy.js';
 
@@ -7,20 +12,31 @@ const openStatuses = ['agendado', 'encaixe', 'em_andamento'];
 const today = () => businessNow().date;
 
 async function scopedBarbers(user) {
-  if (user.role === 'admin') return query(supabase.from('barbers').select('id,name,commission_rate,shop_name').order('name'));
-  return query(supabase.from('barbers').select('id,name,commission_rate,shop_name').eq('shop_name', user.shopName).order('name'));
+  if (isAdminRole(user.role)) return query(supabase.from('barbers').select('id,name,commission_rate,shop_name,shop_id').order('name'));
+  let builder = supabase.from('barbers').select('id,name,commission_rate,shop_name,shop_id').order('name');
+  if (isBarberRole(user.role)) builder = builder.eq('id', user.id);
+  else if (user.shopId) builder = builder.eq('shop_id', user.shopId);
+  else builder = builder.eq('shop_name', user.shopName);
+  return query(builder);
 }
 
-async function scopedAppointments(user, select = '*,services(name,price,duration),barbers(name,shop_name)') {
+async function scopedAppointments(user, select = '*,services(name,price,duration),barbers(name,shop_name,shop_id)') {
   const barbers = await scopedBarbers(user);
   if (!barbers.length) return [];
   return query(supabase.from('appointments').select(select).in('barber_id', barbers.map((barber) => barber.id)).order('date').order('time'));
 }
 
 async function ownedAppointment(user, id) {
-  const appointment = await one(supabase.from('appointments').select('*,services(name,price,duration),barbers(name,shop_name)').eq('id', id), 'Lancamento nao encontrado');
-  if (user.role !== 'admin' && appointment.barbers?.shop_name !== user.shopName) throw new HttpError(403, 'Lancamento fora da sua barbearia');
+  const appointment = await one(supabase.from('appointments').select('*,services(name,price,duration),barbers(name,shop_name,shop_id)').eq('id', id), 'Lancamento nao encontrado');
+  if (!isAdminRole(user.role) && !sameShop(user, appointment.barbers || {})) throw new HttpError(403, 'Lancamento fora da sua barbearia');
   return appointment;
+}
+
+function isInternalPayment(row) {
+  const serviceName = String(row.services?.name || '').toLowerCase();
+  return row.time === '00:00'
+    && /parcela|mensalidade|cobranca|cobrança/.test(serviceName)
+    && /ZB-[A-Z0-9]+/i.test(`${row.client_name || ''} ${serviceName}`);
 }
 
 export async function wallet(req, res) {
@@ -92,13 +108,18 @@ export async function commissions(req, res) {
 export async function retention(req, res) {
   const rows = await scopedAppointments(req.user);
   const lastByClient = new Map();
-  for (const row of rows.filter((item) => paidStatuses.includes(item.status))) {
+  for (const row of rows.filter((item) =>
+    paidStatuses.includes(item.status) && !isInternalPayment(item))) {
     const key = `${String(row.client_phone || '').replace(/\D/g, '')}|${String(row.client_name || '').trim().toLowerCase()}`;
     const existing = lastByClient.get(key);
     if (!existing || row.date > existing.date) lastByClient.set(key, row);
   }
   let actions = [];
-  const actionResult = await supabase.from('client_retention_actions').select('*').eq('shop_name', req.user.shopName);
+  let actionBuilder = supabase.from('client_retention_actions').select('*');
+  actionBuilder = req.user.shopId
+    ? actionBuilder.eq('shop_id', req.user.shopId)
+    : actionBuilder.eq('shop_name', req.user.shopName);
+  const actionResult = await actionBuilder;
   if (!actionResult.error) actions = actionResult.data || [];
   else if (actionResult.error.code !== '42P01'
       && !/Could not find the table/i.test(String(actionResult.error.message))) {
@@ -129,6 +150,7 @@ export async function retentionAction(req, res) {
   try {
     res.status(201).json(await query(
       supabase.from('client_retention_actions').insert({
+        shop_id: req.user.shopId || null,
         shop_name: req.user.shopName,
         client_key: String(clientKey).trim(),
         client_name: String(clientName).trim(),
@@ -150,42 +172,143 @@ export async function retentionAction(req, res) {
 
 export async function cash(req, res) {
   const month = String(req.query.month || today().slice(0, 7));
-  const monthEnd = new Date(`${month}-01T12:00:00Z`); monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1);
-  const rows = await scopedAppointments(req.user);
+  res.json(await cashSummary(req.user, month));
+}
+
+async function cashSummary(user, month) {
+  if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, 'Mes invalido; use AAAA-MM');
+  const monthEnd = new Date(`${month}-01T12:00:00Z`);
+  monthEnd.setUTCMonth(monthEnd.getUTCMonth() + 1);
+  const rows = await scopedAppointments(user);
   const inMonth = rows.filter((row) => String(row.date || '').startsWith(month));
-  const entries = inMonth.filter((row) => paidStatuses.includes(row.status)).reduce((sum, row) => sum + Number(row.received_amount ?? row.services?.price ?? 0), 0);
-  const walletAmount = rows.filter((row) => row.status === 'em_carteira').reduce((sum, row) => sum + Number(row.services?.price ?? 0), 0);
-  const commissionTotal = (await commissionRows(req.user, month)).reduce((sum, row) => sum + Number(row.commission || 0), 0);
-  const manual = await query(supabase.from('cash_entries').select('*').eq('shop_name', req.user.shopName).gte('entry_date', `${month}-01`).lt('entry_date', monthEnd.toISOString().slice(0, 10)).order('entry_date', { ascending: false }));
-  const manualIn = manual.filter((item) => item.type === 'entrada').reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  const manualOut = manual.filter((item) => item.type === 'saida').reduce((sum, item) => sum + Number(item.amount || 0), 0);
-  res.json({ month, entries: entries + manualIn, commissions: commissionTotal + manualOut, balance: entries + manualIn - commissionTotal - manualOut, walletAmount, manual });
+  const entries = inMonth
+    .filter((row) => paidStatuses.includes(row.status))
+    .reduce((sum, row) =>
+      sum + Number(row.received_amount ?? row.services?.price ?? 0), 0);
+  const walletAmount = rows
+    .filter((row) => row.status === 'em_carteira')
+    .reduce((sum, row) =>
+      sum + Number(row.received_amount ?? row.services?.price ?? 0), 0);
+  const commissionTotal = (await commissionRows(user, month))
+    .reduce((sum, row) => sum + Number(row.commission || 0), 0);
+  let movementBuilder = supabase.from('cash_movements').select('*')
+    .eq('source', 'manual')
+    .gte('created_at', `${month}-01T00:00:00-03:00`)
+    .lt('created_at', `${monthEnd.toISOString().slice(0, 10)}T00:00:00-03:00`)
+    .order('created_at', { ascending: false });
+  movementBuilder = user.shopId
+    ? movementBuilder.eq('shop_id', user.shopId)
+    : movementBuilder.eq('shop_name', user.shopName);
+  const movements = await query(movementBuilder);
+  const manual = movements.map((item) => ({
+    ...item,
+    entry_date: String(item.created_at || '').slice(0, 10),
+  }));
+  const manualIn = manual.filter((item) => item.type === 'entrada')
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const manualOut = manual.filter((item) => item.type === 'saida')
+    .reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  let closureBuilder = supabase.from('cash_closures').select('*')
+    .gte('period_start', `${month}-01`)
+    .lt('period_start', monthEnd.toISOString().slice(0, 10))
+    .order('created_at', { ascending: false });
+  closureBuilder = user.shopId
+    ? closureBuilder.eq('shop_id', user.shopId)
+    : closureBuilder.eq('shop_name', user.shopName);
+  const closures = await query(closureBuilder);
+  return {
+    month,
+    entries: entries + manualIn,
+    commissions: commissionTotal + manualOut,
+    balance: entries + manualIn - commissionTotal - manualOut,
+    walletAmount,
+    manual,
+    closures,
+  };
 }
 
 export async function createCashEntry(req, res) {
-  const { description, amount, type, entryDate = today() } = req.body;
-  if (!String(description || '').trim() || !Number.isFinite(Number(amount)) || Number(amount) <= 0) throw new HttpError(400, 'Informe descrição e valor positivo');
-  if (!['entrada', 'saida'].includes(type)) throw new HttpError(400, 'Tipo de lançamento inválido');
-  res.status(201).json(await query(supabase.from('cash_entries').insert({ shop_name: req.user.shopName, description: String(description).trim(), amount: Number(amount), type, entry_date: entryDate, created_by: req.user.id }).select().single()));
+  const { description, amount, type } = req.body;
+  if (!String(description || '').trim()
+      || !Number.isFinite(Number(amount))
+      || Number(amount) <= 0) {
+    throw new HttpError(400, 'Informe descricao e valor positivo');
+  }
+  if (!['entrada', 'saida'].includes(type)) {
+    throw new HttpError(400, 'Tipo de lancamento invalido');
+  }
+  res.status(201).json(await query(supabase.from('cash_movements').insert({
+    shop_id: req.user.shopId || null,
+    shop_name: req.user.shopName,
+    type,
+    source: 'manual',
+    description: String(description).trim(),
+    amount: Number(amount),
+    created_by: req.user.id,
+    created_by_name: req.user.name || '',
+  }).select().single()));
 }
 
 export async function deleteCashEntry(req, res) {
-  const entry = await one(supabase.from('cash_entries').select('id,shop_name').eq('id', req.params.id), 'Lançamento não encontrado');
-  if (req.user.role !== 'admin' && entry.shop_name !== req.user.shopName) throw new HttpError(403, 'Lançamento fora da sua barbearia');
-  await query(supabase.from('cash_entries').delete().eq('id', entry.id));
+  const entry = await one(
+    supabase.from('cash_movements')
+      .select('id,shop_id,shop_name,amount,source')
+      .eq('id', req.params.id),
+    'Lancamento nao encontrado',
+  );
+  if (!isAdminRole(req.user.role) && !sameShop(req.user, entry)) {
+    throw new HttpError(403, 'Lancamento fora da sua barbearia');
+  }
+  if (entry.source !== 'manual') {
+    throw new HttpError(409, 'Somente lancamentos manuais podem ser cancelados');
+  }
+  await query(supabase.from('cash_movements').update({
+    source: 'manual_cancelado',
+    old_amount: entry.amount,
+    new_amount: 0,
+    reason: 'Lancamento cancelado pelo usuario',
+  }).eq('id', entry.id));
   res.status(204).end();
 }
 
+export async function createCashClosure(req, res) {
+  const month = String(req.body.month || today().slice(0, 7));
+  const summary = await cashSummary(req.user, month);
+  const periodEnd = new Date(`${month}-01T12:00:00Z`);
+  periodEnd.setUTCMonth(periodEnd.getUTCMonth() + 1);
+  periodEnd.setUTCDate(0);
+  res.status(201).json(await query(supabase.from('cash_closures').insert({
+    shop_id: req.user.shopId || null,
+    shop_name: req.user.shopName,
+    period_start: `${month}-01`,
+    period_end: periodEnd.toISOString().slice(0, 10),
+    total_in: summary.entries,
+    total_out: summary.commissions,
+    balance: summary.balance,
+    closed_by: req.user.id,
+    closed_by_name: req.user.name || '',
+    file_name: `fechamento-${month}.csv`,
+  }).select().single()));
+}
+
 const baseProfileColumns = 'id,name,login,phone,shop_name,photo_url,background_url,work_start,work_end,commission_rate,role,access_status';
-const profileColumns = `${baseProfileColumns},break_start,break_end,off_days`;
+const profileColumns = `${baseProfileColumns},lunch_start,lunch_end,off_days`;
 
 function isLegacyProfileSchemaError(message) {
-  return /column barbers\.(break_start|break_end|off_days) does not exist/i.test(String(message));
+  return /column barbers\.(lunch_start|lunch_end|off_days) does not exist/i.test(String(message));
+}
+
+function normalizeProfile(row) {
+  return {
+    ...row,
+    break_start: row.lunch_start || '',
+    break_end: row.lunch_end || '',
+  };
 }
 
 async function fetchBarberProfile(id) {
   try {
-    return await one(supabase.from('barbers').select(profileColumns).eq('id', id), 'Perfil nao encontrado');
+    return normalizeProfile(await one(supabase.from('barbers').select(profileColumns).eq('id', id), 'Perfil nao encontrado'));
   } catch (error) {
     if (isLegacyProfileSchemaError(error.message)) {
       return await one(supabase.from('barbers').select(baseProfileColumns).eq('id', id), 'Perfil nao encontrado');
@@ -223,19 +346,19 @@ export async function hours(req, res) {
 }
 
 export async function updateHours(req, res) {
-  const aliases = { workStart: 'work_start', workEnd: 'work_end', breakStart: 'break_start', breakEnd: 'break_end', offDays: 'off_days' };
-  const allowed = ['work_start', 'work_end', 'break_start', 'break_end', 'off_days'];
+  const aliases = { workStart: 'work_start', workEnd: 'work_end', breakStart: 'lunch_start', breakEnd: 'lunch_end', break_start: 'lunch_start', break_end: 'lunch_end', offDays: 'off_days' };
+  const allowed = ['work_start', 'work_end', 'lunch_start', 'lunch_end', 'off_days'];
   const patch = Object.fromEntries(Object.entries(req.body).map(([key, value]) => [aliases[key] || key, value]).filter(([key]) => allowed.includes(key)));
-  if (!patch.work_start && !patch.work_end && !patch.break_start && !patch.break_end && patch.off_days == null) throw new HttpError(400, 'Nenhum horario informado');
+  if (!patch.work_start && !patch.work_end && !patch.lunch_start && !patch.lunch_end && patch.off_days == null) throw new HttpError(400, 'Nenhum horario informado');
   const validTime = (value) => value == null || value === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
-  if (![patch.work_start, patch.work_end, patch.break_start, patch.break_end].every(validTime)) throw new HttpError(400, 'Horario invalido; use HH:MM');
+  if (![patch.work_start, patch.work_end, patch.lunch_start, patch.lunch_end].every(validTime)) throw new HttpError(400, 'Horario invalido; use HH:MM');
   if (patch.work_start && patch.work_end && patch.work_start >= patch.work_end) throw new HttpError(400, 'O fim do expediente deve ser posterior ao inicio');
 
   try {
-    res.json(await query(supabase.from('barbers').update(patch).eq('id', req.user.id).select(profileColumns).single()));
+    res.json(normalizeProfile(await query(supabase.from('barbers').update(patch).eq('id', req.user.id).select(profileColumns).single())));
   } catch (error) {
     if (isLegacyProfileSchemaError(error.message)) {
-      const legacyPatch = Object.fromEntries(Object.entries(patch).filter(([key]) => !['break_start', 'break_end', 'off_days'].includes(key)));
+      const legacyPatch = Object.fromEntries(Object.entries(patch).filter(([key]) => !['lunch_start', 'lunch_end', 'off_days'].includes(key)));
       if (!Object.keys(legacyPatch).length) throw new HttpError(400, 'Horas de intervalo nao sao compativeis com esta versao do banco de dados');
       res.json(await query(supabase.from('barbers').update(legacyPatch).eq('id', req.user.id).select(baseProfileColumns).single()));
       return;

@@ -1,5 +1,5 @@
 import { supabase, one, query } from '../services/supabaseService.js';
-import { assertShopAccess } from '../services/accessService.js';
+import { assertShopAccess, isBarberRole } from '../services/accessService.js';
 import { intervalsOverlap, validateSlot } from '../services/schedulePolicy.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -7,18 +7,21 @@ const activeStatuses = ['agendado', 'em_carteira', 'encaixe', 'em_andamento', 'b
 const validStatuses = [...activeStatuses, 'concluido', 'finalizado', 'faltou', 'cancelado'];
 
 async function ensureBarberAccess(user, barberId) {
-  const barber = await one(supabase.from('barbers').select('id,shop_name').eq('id', barberId), 'Barbeiro nao encontrado');
+  const barber = await one(supabase.from('barbers').select('id,shop_name,shop_id').eq('id', barberId), 'Barbeiro nao encontrado');
   assertShopAccess(user, barber);
+  if (isBarberRole(user.role) && barber.id !== user.id) {
+    throw new HttpError(403, 'Voce so pode operar sua propria agenda');
+  }
   return barber;
 }
 
 async function assertNoConflict({ barberId, date, time, serviceId, ignoreId, allowFitIn = false }) {
   const service = await one(
-    supabase.from('services').select('id,duration').eq('id', serviceId).eq('barber_id', barberId),
+    supabase.from('services').select('id,duration').eq('id', serviceId).eq('barber_id', barberId).eq('active', true),
     'Servico nao encontrado para esse profissional',
   );
   const barber = await one(
-    supabase.from('barbers').select('id,work_start,work_end,off_days').eq('id', barberId),
+    supabase.from('barbers').select('id,work_start,work_end,lunch_start,lunch_end,off_days').eq('id', barberId),
     'Barbeiro nao encontrado',
   );
   const slotError = validateSlot({ barber, date, time, duration: service.duration });
@@ -33,12 +36,19 @@ async function assertNoConflict({ barberId, date, time, serviceId, ignoreId, all
 export async function listAppointments(req, res) {
   const barberId = req.query.barberId;
   const barber = barberId ? await ensureBarberAccess(req.user, barberId) : null;
-  let builder = supabase.from('appointments').select('*,services(name,price,duration),barbers(name,shop_name)').order('date').order('time');
+  let builder = supabase.from('appointments').select('*,services(name,price,duration),barbers(name,shop_name,shop_id)').order('date').order('time');
   if (barber) builder = builder.eq('barber_id', barber.id);
   else if (req.user.role !== 'admin') {
-    const shopBarbers = await query(
-      supabase.from('barbers').select('id').eq('shop_name', req.user.shopName),
-    );
+    let shopBarbers;
+    if (isBarberRole(req.user.role)) {
+      shopBarbers = [{ id: req.user.id }];
+    } else {
+      let shopBuilder = supabase.from('barbers').select('id');
+      shopBuilder = req.user.shopId
+        ? shopBuilder.eq('shop_id', req.user.shopId)
+        : shopBuilder.eq('shop_name', req.user.shopName);
+      shopBarbers = await query(shopBuilder);
+    }
     if (!shopBarbers.length) {
       res.json([]);
       return;
@@ -52,7 +62,7 @@ export async function listAppointments(req, res) {
 export async function availability(req, res) {
   const { barberId, date } = req.query;
   if (!barberId || !date) throw new HttpError(400, 'barberId e date sao obrigatorios');
-  await ensureBarberAccess(req.user, barberId);
+  const barber = await ensureBarberAccess(req.user, barberId);
   const appointments = await query(supabase.from('appointments').select('id,time,status,service_id,services(duration)').eq('barber_id', barberId).eq('date', date).in('status', activeStatuses));
   res.json(appointments);
 }
@@ -102,12 +112,16 @@ export async function createAppointment(req, res) {
     status,
     reminder_days: reminderDays,
     reminder_date: reminderDate,
-  }).select('*,services(name,price,duration),barbers(name,shop_name)').single()));
+    shop_id: barber.shop_id || req.user.shopId || null,
+  }).select('*,services(name,price,duration),barbers(name,shop_name,shop_id)').single()));
 }
 
 export async function updateAppointment(req, res) {
-  const current = await one(supabase.from('appointments').select('*,barbers(shop_name)').eq('id', req.params.id), 'Agendamento nao encontrado');
-  assertShopAccess(req.user, { id: current.barber_id, shop_name: current.barbers.shop_name });
+  const current = await one(supabase.from('appointments').select('*,barbers(shop_name,shop_id)').eq('id', req.params.id), 'Agendamento nao encontrado');
+  assertShopAccess(req.user, { id: current.barber_id, ...current.barbers });
+  if (isBarberRole(req.user.role) && current.barber_id !== req.user.id) {
+    throw new HttpError(403, 'Voce so pode operar sua propria agenda');
+  }
   const allowed = ['barber_id', 'service_id', 'client_name', 'client_phone', 'date', 'time', 'status', 'reminder_days', 'reminder_date', 'cancel_note', 'barberId', 'serviceId', 'clientName', 'clientPhone'];
   const patch = Object.fromEntries(
     Object.entries(req.body)
@@ -126,12 +140,19 @@ export async function updateAppointment(req, res) {
       allowFitIn: (patch.status || current.status) === 'encaixe',
     });
   }
-  res.json(await query(supabase.from('appointments').update(patch).eq('id', current.id).select('*,services(name,price,duration),barbers(name,shop_name)').single()));
+  res.json(await query(supabase.from('appointments').update(patch).eq('id', current.id).select('*,services(name,price,duration),barbers(name,shop_name,shop_id)').single()));
 }
 
 export async function deleteAppointment(req, res) {
-  const current = await one(supabase.from('appointments').select('*,barbers(shop_name)').eq('id', req.params.id), 'Agendamento nao encontrado');
-  assertShopAccess(req.user, { id: current.barber_id, shop_name: current.barbers.shop_name });
-  await query(supabase.from('appointments').delete().eq('id', current.id));
+  const current = await one(supabase.from('appointments').select('*,barbers(shop_name,shop_id)').eq('id', req.params.id), 'Agendamento nao encontrado');
+  assertShopAccess(req.user, { id: current.barber_id, ...current.barbers });
+  if (isBarberRole(req.user.role) && current.barber_id !== req.user.id) {
+    throw new HttpError(403, 'Voce so pode operar sua propria agenda');
+  }
+  await query(supabase.from('appointments').update({
+    status: 'cancelado',
+    cancel_note: 'Cancelado pelo usuario',
+    updated_at: new Date().toISOString(),
+  }).eq('id', current.id));
   res.status(204).end();
 }

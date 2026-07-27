@@ -3,7 +3,15 @@ import { intervalsOverlap, validateSlot } from '../services/schedulePolicy.js';
 import { HttpError } from '../utils/httpError.js';
 
 const statuses = ['agendado', 'em_carteira', 'encaixe', 'em_andamento', 'bloqueio'];
-const barberColumns = 'id,name,phone,shop_name,photo_url,background_url,work_start,work_end,off_days,access_status';
+const barberColumns = 'id,name,phone,shop_name,shop_id,photo_url,background_url,work_start,work_end,lunch_start,lunch_end,off_days,access_status';
+
+function publicBarber(row) {
+  return {
+    ...row,
+    break_start: row.lunch_start || '',
+    break_end: row.lunch_end || '',
+  };
+}
 
 function publicServices(rows) {
   return rows.filter((service) => {
@@ -17,22 +25,25 @@ function publicServices(rows) {
 }
 
 async function activeBarber(id) {
-  return one(
-    supabase.from('barbers').select(barberColumns).eq('id', id).eq('access_status', 'ativo'),
+  return publicBarber(await one(
+    supabase.from('barbers').select(barberColumns).eq('id', id).in('access_status', ['ativo', 'active']),
     'Profissional indisponivel',
-  );
+  ));
 }
 
 export async function bookingContext(req, res) {
-  const owner = await one(
-    supabase.from('barbers').select(barberColumns).eq('login', req.params.login).eq('access_status', 'ativo'),
+  const owner = publicBarber(await one(
+    supabase.from('barbers').select(barberColumns).eq('login', req.params.login).in('access_status', ['ativo', 'active']),
     'Link nao encontrado',
-  );
-  const barbers = await query(
-    supabase.from('barbers').select(barberColumns).eq('shop_name', owner.shop_name).eq('access_status', 'ativo').order('created_at'),
-  );
+  ));
+  let barberBuilder = supabase.from('barbers').select(barberColumns)
+    .in('access_status', ['ativo', 'active']).order('created_at');
+  barberBuilder = owner.shop_id
+    ? barberBuilder.eq('shop_id', owner.shop_id)
+    : barberBuilder.eq('shop_name', owner.shop_name);
+  const barbers = (await query(barberBuilder)).map(publicBarber);
   const services = barbers.length
-    ? publicServices(await query(supabase.from('services').select('*').in('barber_id', barbers.map((barber) => barber.id)).order('display_order').order('created_at')))
+    ? publicServices(await query(supabase.from('services').select('*').in('barber_id', barbers.map((barber) => barber.id)).eq('active', true).order('display_order').order('created_at')))
     : [];
   res.json({ owner, barbers, services });
 }
@@ -59,7 +70,7 @@ export async function schedule(req, res) {
   }
   const barber = await activeBarber(barberId);
   const service = await one(
-    supabase.from('services').select('id,barber_id,name,duration,price').eq('id', serviceId).eq('barber_id', barber.id),
+    supabase.from('services').select('id,barber_id,name,duration,price').eq('id', serviceId).eq('barber_id', barber.id).eq('active', true),
     'Servico indisponivel para esse profissional',
   );
   if (!publicServices([service]).length) throw new HttpError(400, 'Esse servico nao esta disponivel no catalogo publico');
@@ -85,6 +96,7 @@ export async function schedule(req, res) {
       date,
       time,
       status: 'agendado',
+      shop_id: barber.shop_id || null,
     }).select('*,services(name,price,duration),barbers(name)').single(),
   ));
 }

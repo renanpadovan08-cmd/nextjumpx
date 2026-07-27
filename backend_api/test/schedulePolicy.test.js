@@ -38,6 +38,16 @@ test('interpreta folgas legadas e agenda semanal JSON', () => {
   });
 });
 
+test('reutiliza os campos lunch_start e lunch_end do schema existente', () => {
+  const schedule = scheduleForDate({
+    ...standardBarber,
+    lunch_start: '12:00',
+    lunch_end: '13:00',
+  }, '2026-07-27');
+  assert.equal(schedule.break_start, '12:00');
+  assert.equal(schedule.break_end, '13:00');
+});
+
 test('valida expediente, intervalo, passado e datas reais', () => {
   const barber = {
     ...standardBarber,

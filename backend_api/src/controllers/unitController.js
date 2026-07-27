@@ -26,7 +26,7 @@ export async function create(req, res) {
     'Gerente nao encontrado',
   );
   try {
-    res.status(201).json(await query(supabase.from('unit_requests').insert({ manager_id: req.user.id, manager_name: manager.name || '', manager_login: manager.login || '', shop_name: manager.shop_name || req.user.shopName, unit_name: unitName.trim(), city: city || '', state: state || '', barber_count: Number(barberCount || 1), notes: notes || '', status: 'pendente' }).select().single()));
+    res.status(201).json(await query(supabase.from('unit_requests').insert({ manager_id: req.user.id, shop_id: req.user.shopId || null, manager_name: manager.name || '', manager_login: manager.login || '', shop_name: manager.shop_name || req.user.shopName, unit_name: unitName.trim(), city: city || '', state: state || '', barber_count: Number(barberCount || 1), notes: notes || '', status: 'pendente' }).select().single()));
   } catch (error) {
     if (isMissingTableError(error.message)) {
       throw new HttpError(400, 'Funcionalidade de solicitacoes de unidade indisponivel. Atualize o banco de dados.');

@@ -38,11 +38,11 @@ function recurringDates(startDate, frequency, months) {
 }
 
 export async function list(req, res) {
-  const barbers = await query(
-    supabase.from('barbers')
-      .select('id,name,shop_name')
-      .eq('shop_name', req.user.shopName),
-  );
+  let barberBuilder = supabase.from('barbers').select('id,name,shop_name,shop_id');
+  barberBuilder = req.user.shopId
+    ? barberBuilder.eq('shop_id', req.user.shopId)
+    : barberBuilder.eq('shop_name', req.user.shopName);
+  const barbers = await query(barberBuilder);
   const ids = barbers.map((item) => item.id);
   const rows = ids.length
     ? await query(
@@ -117,7 +117,7 @@ export async function create(req, res) {
   }
   const barber = await one(
     supabase.from('barbers')
-      .select('id,shop_name,work_start,work_end,off_days')
+      .select('id,shop_name,shop_id,work_start,work_end,lunch_start,lunch_end,off_days')
       .eq('id', barberId),
     'Barbeiro nao encontrado',
   );
@@ -164,6 +164,8 @@ export async function create(req, res) {
       name: `${cleanPackageName} - bloqueio assinatura ${code}`,
       price: 0,
       duration: serviceDuration,
+      shop_id: barber.shop_id || req.user.shopId || null,
+      active: true,
     }).select().single(),
   );
   const paymentService = await query(
@@ -172,6 +174,8 @@ export async function create(req, res) {
       name: `${cleanPackageName} - parcela mensal ${code}`,
       price: value,
       duration: 1,
+      shop_id: barber.shop_id || req.user.shopId || null,
+      active: true,
     }).select().single(),
   );
   const schedules = dates.map((date) => ({
@@ -182,6 +186,7 @@ export async function create(req, res) {
     date,
     time,
     status: 'agendado',
+    shop_id: barber.shop_id || req.user.shopId || null,
   }));
   const payments = Array.from({ length: monthCount }, (_, index) => ({
     barber_id: barberId,
@@ -192,6 +197,7 @@ export async function create(req, res) {
     date: isoAddMonths(startDate, index),
     time: '00:00',
     status: 'em_carteira',
+    shop_id: barber.shop_id || req.user.shopId || null,
   }));
   await query(supabase.from('appointments').insert([...schedules, ...payments]));
   res.status(201).json({ code, appointments: schedules.length, payments: payments.length });
@@ -225,9 +231,11 @@ export async function cancel(req, res) {
   if (!/^ZB-[A-Z0-9]+$/.test(code)) {
     throw new HttpError(400, 'Codigo de contrato invalido');
   }
-  const barbers = await query(
-    supabase.from('barbers').select('id').eq('shop_name', req.user.shopName),
-  );
+  let barberBuilder = supabase.from('barbers').select('id');
+  barberBuilder = req.user.shopId
+    ? barberBuilder.eq('shop_id', req.user.shopId)
+    : barberBuilder.eq('shop_name', req.user.shopName);
+  const barbers = await query(barberBuilder);
   if (!barbers.length) throw new HttpError(404, 'Contrato nao encontrado');
   const rows = await query(
     supabase.from('appointments')

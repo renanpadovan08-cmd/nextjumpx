@@ -1,4 +1,5 @@
 import { supabase, query } from '../services/supabaseService.js';
+import { isAdminRole, sameShop } from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
 
 function isMissingTableError(message) {
@@ -13,7 +14,10 @@ function canManageShop(user) {
 export async function goals(req, res) {
   const month = String(req.query.month || new Date().toISOString().slice(0, 7));
   if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, 'Mes invalido; use AAAA-MM');
-  const barbersQuery = supabase.from('barbers').select('id,name').eq('shop_name', req.user.shopName);
+  let barbersQuery = supabase.from('barbers').select('id,name');
+  barbersQuery = req.user.shopId
+    ? barbersQuery.eq('shop_id', req.user.shopId)
+    : barbersQuery.eq('shop_name', req.user.shopName);
   if (!canManageShop(req.user)) barbersQuery.eq('id', req.user.id);
   const barbers = await query(barbersQuery);
   try {
@@ -35,8 +39,8 @@ export async function saveGoal(req, res) {
   if (!canManageShop(req.user) && barberId !== req.user.id) {
     throw new HttpError(403, 'Voce so pode alterar suas proprias metas');
   }
-  const barber = await query(supabase.from('barbers').select('id,shop_name').eq('id', barberId).single());
-  if (req.user.role !== 'admin' && barber.shop_name !== req.user.shopName) throw new HttpError(403, 'Barbeiro fora da sua barbearia');
+  const barber = await query(supabase.from('barbers').select('id,shop_name,shop_id').eq('id', barberId).single());
+  if (!isAdminRole(req.user.role) && !sameShop(req.user, barber)) throw new HttpError(403, 'Barbeiro fora da sua barbearia');
   const financial = Number(financialGoal ?? revenueGoal ?? 0);
   const attendance = Number(attendanceGoal ?? appointmentsGoal ?? 0);
   if (!Number.isFinite(financial) || financial < 0 || !Number.isInteger(attendance) || attendance < 0) {

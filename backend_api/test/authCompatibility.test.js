@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { requireRoles } from '../src/middleware/authMiddleware.js';
+import {
+  isBarberRole,
+  sameShop,
+} from '../src/services/accessService.js';
 import { legacyPasswordHash } from '../src/services/passwordPolicy.js';
 
 test('gera exatamente o hash usado pelo site legado da main', () => {
@@ -30,4 +34,17 @@ test('normaliza os papeis antigos sem liberar perfis indevidos', () => {
     result = error;
   });
   assert.equal(result, undefined);
+});
+
+test('trata barber e barbeiro igualmente e prioriza shop_id', () => {
+  assert.equal(isBarberRole('barber'), true);
+  assert.equal(isBarberRole('barbeiro'), true);
+  assert.equal(sameShop(
+    { shopId: 'shop-a', shopName: 'Nome repetido' },
+    { shop_id: 'shop-b', shop_name: 'Nome repetido' },
+  ), false);
+  assert.equal(sameShop(
+    { shopId: 'shop-a', shopName: 'Antiga' },
+    { shop_id: 'shop-a', shop_name: 'Nova' },
+  ), true);
 });
