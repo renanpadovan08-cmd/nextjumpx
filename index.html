@@ -37,7 +37,7 @@
       <h2 id="solutions-title" class="reveal reveal--section">Escolha sua solução</h2>
 
       <div class="product-grid">
-        <a class="product-card product-card--active reveal reveal--card-1" href="/zenbarber/" aria-label="Acessar plataforma ZenBarber">
+        <a id="zenbarberLink" class="product-card product-card--active reveal reveal--card-1" href="zenbarber/index.html" data-production-href="/zenbarber/" aria-label="Acessar plataforma ZenBarber">
           <span class="card-shine" aria-hidden="true"></span>
           <p class="status status--available"><span></span>Disponível agora</p>
           <img src="images/zenbarber.jpeg" alt="ZenBarber" class="product-logo">
@@ -66,6 +66,11 @@
     (() => {
       const root = document.documentElement;
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const zenbarberLink = document.getElementById('zenbarberLink');
+
+      if (zenbarberLink && location.protocol !== 'file:') {
+        zenbarberLink.href = zenbarberLink.dataset.productionHref;
+      }
 
       if (!reduceMotion && window.matchMedia('(pointer: fine)').matches) {
         let frame = 0;
