@@ -23,9 +23,22 @@ test("mantém landing e ZenBarber em pontos de entrada separados",()=>{
   assert.ok(!fs.existsSync(path.join(repoRoot,"js")),"os scripts do ZenBarber não devem permanecer na raiz");
 });
 
+test("todos os arquivos locais referenciados pela landing existem",()=>{
+  const html = read(repoRoot,"index.html");
+  const refs = [...html.matchAll(/\s(?:src|href)="([^"]+)"/g)]
+    .map((match)=>match[1])
+    .filter((ref)=>!ref.startsWith("http") && !ref.startsWith("#"))
+    .map((ref)=>ref.split("?")[0]);
+
+  for(const ref of refs){
+    assert.ok(!ref.startsWith("/"),`a referência precisa ser relativa para funcionar via file://: ${ref}`);
+    assert.ok(fs.existsSync(path.join(repoRoot,ref)),`referência ausente: ${ref}`);
+  }
+});
+
 test("todos os arquivos locais referenciados pelo ZenBarber existem",()=>{
   const html = read(zenbarberRoot,"index.html");
-  const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+  const refs = [...html.matchAll(/\s(?:src|href)="([^"]+)"/g)]
     .map((match)=>match[1])
     .filter((ref)=>!ref.startsWith("http") && !ref.startsWith("#"))
     .map((ref)=>ref.split("?")[0]);
