@@ -13,6 +13,9 @@ A landing abre o ZenBarber no mesmo domínio, pelo caminho `/zenbarber/`.
 O Manifest, os ícones e o Service Worker do ZenBarber usam caminhos relativos,
 mantendo o PWA isolado dentro desse diretório.
 
+O BCrypt usado no login fica versionado em `zenbarber/js/vendor`, evitando
+dependência de CDN durante a validação da senha.
+
 ## Validação do login
 
 Execute:

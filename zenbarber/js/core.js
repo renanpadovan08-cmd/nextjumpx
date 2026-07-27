@@ -14,7 +14,7 @@ const ADMIN_BARBER_COLUMNS = "id,name,login,phone,shop_name,role,photo_url,backg
 // Observação: o ideal definitivo é Supabase Auth ou backend/Edge Function com bcrypt/argon2.
 // Este hotfix remove senha aberta do fluxo e migra senhas antigas no primeiro login.
 const PASSWORD_HASH_PREFIX = "zb_sha256_v1$";
-const BCRYPT_SCRIPT_SRC = "https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcryptjs.min.js";
+const BCRYPT_SCRIPT_SRC = "js/vendor/bcrypt.min.js?v=2.4.3";
 let bcryptLoaderPromise = null;
 
 function browserBcrypt(){

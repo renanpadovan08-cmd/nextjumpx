@@ -1,9 +1,10 @@
-const CACHE_NAME = 'zenbarber-monorepo-v2';
+const CACHE_NAME = 'zenbarber-monorepo-v3';
 const APP_SHELL = [
   './',
   'index.html',
   'css/style.css',
   'js/core.js',
+  'js/vendor/bcrypt.min.js',
   'js/bootstrap.js',
   'js/modules/auth.js',
   'js/modules/dashboard.js',

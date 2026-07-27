@@ -5,10 +5,11 @@ const test = require("node:test");
 const vm = require("node:vm");
 const {TextEncoder} = require("node:util");
 const {webcrypto} = require("node:crypto");
+const bcryptVendor = require("../zenbarber/js/vendor/bcrypt.min.js");
 
 const coreSource = fs.readFileSync(path.join(__dirname,"..","zenbarber","js","core.js"),"utf8");
 
-function createCoreContext({bcryptCompare} = {}){
+function createCoreContext({bcryptCompare,initialBcrypt} = {}){
   const listeners = new Map();
   const context = {
     console,
@@ -33,6 +34,7 @@ function createCoreContext({bcryptCompare} = {}){
     }
   };
   context.window = context;
+  if(initialBcrypt) context.bcrypt = initialBcrypt;
   vm.createContext(context);
   vm.runInContext(coreSource,context,{filename:"js/core.js"});
   return context;
@@ -56,6 +58,14 @@ test("carrega BCrypt e valida um password_hash BCrypt",async()=>{
 
   assert.equal(await verify(context,{login:"usuario",password_hash:hash},"senha-correta"),true);
   assert.deepEqual(received,{password:"senha-correta",hash});
+});
+
+test("valida BCrypt usando a biblioteca local distribuída com o site",async()=>{
+  const context = createCoreContext({initialBcrypt:bcryptVendor});
+  const hash = bcryptVendor.hashSync("senha-correta",4);
+
+  assert.equal(await verify(context,{login:"usuario",password_hash:hash},"senha-correta"),true);
+  assert.equal(await verify(context,{login:"usuario",password_hash:hash},"senha-errada"),false);
 });
 
 test("valida o hash SHA-256 legado criado pelo próprio sistema",async()=>{
