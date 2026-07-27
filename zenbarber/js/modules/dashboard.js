@@ -1,3 +1,23 @@
+// ===== DashboardService (Sprint 016) =====
+window.DashboardService={
+ metrics(done,wallet){
+   return {
+     revenue:DashboardMetrics.revenue(done),
+     commission:DashboardMetrics.commission(done),
+     profit:DashboardMetrics.revenue(done)-DashboardMetrics.commission(done),
+     wallet:DashboardMetrics.wallet(wallet)
+   };
+ }
+};
+// ===== End DashboardService =====
+
+// Refatoração NextJumpX v2.1.11
+const DashboardMetrics={
+ revenue(list){return list.reduce((t,a)=>t+Number(a.services?.price||0),0);},
+ commission(list){return list.reduce((t,a)=>t+commissionValueFor(a),0);},
+ wallet(list){return list.reduce((t,a)=>t+Number(a.services?.price||0),0);}
+};
+
 function monthKey(date){ return String(date||'').slice(0,7); }
 function monthLabel(key){
   const [y,m]=String(key||dashboardMonth).split('-');
@@ -21,10 +41,11 @@ function dash(){
   const done = allDone.filter(a=>monthKey(a.date)===selectedMonth);
   const activeToday = cache.appointments.filter(a=>['agendado','encaixe','em_andamento'].includes(a.status) && a.date===today && !isClosureAppt(a)).sort((a,b)=>String(a.time||'').localeCompare(String(b.time||'')));
   const wal = cache.appointments.filter(a=>a.status==='em_carteira');
-  const fat = done.reduce((t,a)=>t+Number(a.services?.price||0),0);
-  const comissao = done.reduce((t,a)=>t+commissionValueFor(a),0);
-  const lucro = fat - comissao;
-  const car = wal.reduce((t,a)=>t+Number(a.services?.price||0),0);
+  const summary=DashboardService.metrics(done,wal);
+  const fat=summary.revenue;
+  const comissao=summary.commission;
+  const lucro=summary.profit;
+  const car=summary.wallet;
   const todayDone = cache.appointments.filter(a=>a.status==='concluido' && a.date===today).reduce((t,a)=>t+Number(a.services?.price||0),0);
 
   const futureGroups = {};

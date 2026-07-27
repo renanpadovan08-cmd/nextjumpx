@@ -3,47 +3,71 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ZenBarber</title>
+  <title>ZenBarber Pro Powered by NextJumpX</title>
   <meta name="theme-color" content="#0d0d10" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="ZenBarber" />
-  <link id="appManifest" />
-  <link rel="apple-touch-icon" href="icon-192.png" />
-  <link rel="stylesheet" href="css/style.css?v=20260727-assets-local-v2" />
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="js/config.js?v=github-audit-safe"></script>
-  <script src="js/vendor/bcrypt.min.js?v=2.4.3"></script>
+  <meta name="apple-mobile-web-app-title" content="ZenBarber Pro" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon-192.png?v=20260618-brand-pro2" />
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=20260618-brand-pro2" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=20260618-brand-pro2" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192x192.png?v=20260618-brand-pro2" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180x180.png?v=20260618-brand-pro2" />
+  <meta property="og:title" content="ZenBarber Pro" />
+  <meta property="og:description" content="Sistema de agendamentos para barbearias." />
+  <meta property="og:image" content="https://nextjumpx.com.br/og-whatsapp-preview-1200x630.png?v=20260618-brand-pro2" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:url" content="https://nextjumpx.com.br/" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://nextjumpx.com.br/og-whatsapp-preview-1200x630.png?v=20260618-brand-pro2" />
+  <link rel="stylesheet" href="css/style.css?v=20260714-loading-final" />
 </head>
-<body>
+<body class="zenIsLoading">
   <div id="toast"></div>
+  <div id="zenGlobalLoader" class="zenGlobalLoader isVisible" aria-live="polite" aria-busy="true">
+    <div class="zenLoaderPanel">
+      <img src="/nextjumpx-symbol.png" alt="" class="zenLoaderLogo">
+      <div class="zenLoaderText"><span id="zenLoaderMessage">Carregando</span><span class="zenLoaderDots" aria-hidden="true"><i></i><i></i><i></i></span></div>
+    </div>
+  </div>
   <div id="root"></div>
 
-  <script src="js/core.js?v=20260727-bcrypt-local"></script>
-  <script src="js/modules/auth.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/dashboard.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/components.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/cadastros.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/agenda.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/clientesFixos.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/relatorios.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/admin.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/modules/meuNegocio.js?v=20260607-meu-negocio"></script>
-  <script src="js/modules/agendamentoPublico.js?v=20260606-seguranca-etapa3"></script>
-  <script src="js/bootstrap.js?v=20260606-seguranca-etapa3"></script>
+  <script>
+    window.renderZenStartupError = function(message){
+      clearTimeout(window.__zenStartupWatchdog);
+      var loader = document.getElementById('zenGlobalLoader');
+      var root = document.getElementById('root');
+      if(loader){ loader.classList.remove('isVisible'); loader.hidden = true; }
+      document.body.classList.remove('zenIsLoading');
+      if(root) root.innerHTML = '<div class="page"><div class="card"><h2>Não foi possível abrir o ZenBarber</h2><p class="muted">'+String(message || 'Verifique sua conexão e tente novamente.')+'</p><button class="primary" onclick="location.reload()">Tentar novamente</button></div></div>';
+    };
+    window.__zenStartupWatchdog = setTimeout(function(){
+      if(!window.__zenBarberReady) window.renderZenStartupError('O carregamento demorou mais que o esperado. Verifique sua conexão e tente novamente.');
+    }, 30000);
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" onerror="renderZenStartupError('Não foi possível carregar a conexão com o sistema. Verifique sua internet e tente novamente.')"></script>
+  <script src="js/core.js?v=20260714-loading-final"></script>
+  <script src="js/modules/auth.js?v=20260714-loading-final"></script>
+  <script src="js/modules/dashboard.js?v=20260618-brand-pro2"></script>
+  <script src="js/modules/components.js?v=20260618-brand-pro2"></script>
+  <script src="js/modules/cadastros.js?v=20260619-funcionamento-config"></script>
+  <script src="js/modules/agenda.js?v=20260618-brand-pro2"></script>
+  <script src="js/modules/caixa.js?v=20260618-brand-pro2"></script>
+  <script src="js/modules/clientesFixos.js?v=20260618-brand-pro2"></script>
+  <script src="js/modules/relatorios.js?v=20260618-brand-pro2"></script>
+  <script src="js/modules/supportChat.js?v=20260619-support-chat"></script>
+  <script src="js/modules/admin.js?v=20260618-brand-pro2"></script>
+  <script src="js/modules/meuNegocio.js?v=20260618-brand-pro2"></script>
+  <script src="js/modules/agendamentoPublico.js?v=20260618-brand-pro2"></script>
+  <script src="js/bootstrap.js?v=20260714-loading-final"></script>
 
   <script>
-    const webProtocol = location.protocol === "http:" || location.protocol === "https:";
-
-    if (webProtocol) {
-      const manifestLink = document.getElementById("appManifest");
-      manifestLink.href = "manifest.json";
-      manifestLink.rel = "manifest";
-    }
-
-    if (webProtocol && "serviceWorker" in navigator) {
+    if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("sw.js").catch(function (error) {
+        navigator.serviceWorker.register("/sw.js?v=20260714-loading-final").catch(function (error) {
           console.warn("ZenBarber PWA: service worker não registrado", error);
         });
       });

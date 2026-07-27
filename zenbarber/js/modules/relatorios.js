@@ -1,6 +1,26 @@
+// ===== ReportService (Sprint 013) =====
+window.ReportService = {
+  completed(){
+    return (cache.appointments||[]).filter(a=>a.status==='concluido');
+  },
+  revenue(){
+    return this.completed().reduce((t,a)=>t+Number(a.services?.price||0),0);
+  },
+  ranking(){
+    const done=this.completed();
+    return cache.shopBarbers.map(b=>{
+      const ap=done.filter(a=>a.barber_id===b.id);
+      const total=ap.reduce((t,a)=>t+Number(a.services?.price||0),0);
+      const com=total*Number(b.commission_rate||0)/100;
+      return {b,ap,total,com,lucro:total-com};
+    }).sort((a,b)=>b.total-a.total);
+  }
+};
+// ===== End ReportService =====
+
 function wallet(){
   const arr=cache.appointments.filter(a=>a.status==='em_carteira').sort((a,b)=>String(a.reminder_date||a.date||'').localeCompare(String(b.reminder_date||b.date||'')));
-  return `<div class="card"><h3>Valores pendentes</h3><p class="muted">Use Bonificar quando o barbeiro decidir isentar aquela cobrança. Use Cancelar cobrança para remover um lançamento pendente errado sem somar no faturamento.</p>${arr.map(a=>`<div class="item"><div><strong>${esc(a.client_name)} — ${money(a.services?.price)} • ${esc(barberName(a.barber_id))}</strong><small>${esc(a.services?.name||'')} • vencimento/lembrete: ${formatDateBR(a.reminder_date||a.date)||'sem data'}</small><br><small>${esc(a.client_phone||'')}</small></div><div class="walletActions"><a target="_blank" href="${wa(a.client_phone,`Olá ${a.client_name}, tudo bem? Passando para lembrar do valor em aberto de ${money(a.services?.price)} referente ao serviço ${a.services?.name||''}.`)}"><button class="whats">Cobrar no WhatsApp</button></a><button class="primary" onclick="markPaid('${a.id}')">Marcar recebido</button><button class="gold" onclick="receiveWithDiscount('${a.id}')">Valor a receber</button><button class="gold" onclick="bonifyWallet('${a.id}')">Bonificar</button><button class="danger" onclick="cancelWalletCharge('${a.id}')">Cancelar cobrança</button>${isMonthlyParcel(a)?`<button onclick="fixWalletParcelValue('${a.id}')">Corrigir valor</button>`:''}</div></div>`).join("") || '<div class="empty">Nenhum cliente em carteira.</div>'}</div>`;
+  return `<div class="card"><h3>Valores pendentes</h3><p class="muted">Use Bonificar quando o barbeiro decidir isentar aquela cobrança. Use Cancelar cobrança para remover um lançamento pendente errado sem somar no faturamento.</p>${arr.map(a=>`<div class="item"><div><strong>${esc(a.client_name)} — ${money(appointmentPrice(a))} • ${esc(barberName(a.barber_id))}</strong><small>${esc(appointmentServiceName(a)||'')} • vencimento/lembrete: ${formatDateBR(a.reminder_date||a.date)||'sem data'}</small><br><small>${esc(a.client_phone||'')}</small></div><div class="walletActions"><a target="_blank" href="${wa(a.client_phone,`Olá ${a.client_name}, tudo bem? Passando para lembrar do valor em aberto de ${money(appointmentPrice(a))} referente ao serviço ${appointmentServiceName(a)||''}.`)}"><button class="whats">Cobrar no WhatsApp</button></a><button class="primary" onclick="markPaid('${a.id}')">Marcar recebido</button><button class="gold" onclick="receiveWithDiscount('${a.id}')">Valor a receber</button><button class="gold" onclick="bonifyWallet('${a.id}')">Bonificar</button><button class="danger" onclick="cancelWalletCharge('${a.id}')">Cancelar cobrança</button>${isMonthlyParcel(a)?`<button onclick="fixWalletParcelValue('${a.id}')">Corrigir valor</button>`:''}</div></div>`).join("") || '<div class="empty">Nenhum cliente em carteira.</div>'}</div>`;
 }
 
 function overdueAppointments(){
@@ -12,7 +32,7 @@ function overdueAppointments(){
 function pendingSettlementPage(){
   const past = overdueAppointments();
   const walletHtml = wallet();
-  const pastHtml = `<div class="card"><h3>Agendamentos passados sem baixa</h3><p class="muted">Aqui aparecem horários que já passaram e ainda estão como agendados. Use para dar baixa quando o barbeiro esqueceu de confirmar o pagamento no dia. Ao marcar como recebido, o faturamento entra na data original do atendimento.</p>${past.map(a=>`<div class="item pendingPast"><div><strong>${esc(a.client_name||'Cliente')} — ${money(a.services?.price)} • ${esc(barberName(a.barber_id))}</strong><small>${apptWhenHtml(a)} • ${esc(a.services?.name||'Serviço')} • ${a.services?.duration||30}min</small><br><small>${esc(a.client_phone||'')}</small></div><div class="walletActions"><button class="primary" onclick="markPaid('${a.id}')">Dar baixa / Recebido</button><button class="gold" onclick="receiveWithDiscount('${a.id}')">Valor a receber</button><button class="gold" onclick="sendPastToWallet('${a.id}')">Enviar para carteira</button><button class="danger" onclick="markPastNoShow('${a.id}')">Cliente faltou</button></div></div>`).join('') || '<div class="empty">Nenhum agendamento passado pendente de baixa.</div>'}</div>`;
+  const pastHtml = `<div class="card"><h3>Agendamentos passados sem baixa</h3><p class="muted">Aqui aparecem horários que já passaram e ainda estão como agendados. Use para dar baixa quando o barbeiro esqueceu de confirmar o pagamento no dia. Ao marcar como recebido, o faturamento entra na data original do atendimento.</p>${past.map(a=>`<div class="item pendingPast"><div><strong>${esc(a.client_name||'Cliente')} — ${money(appointmentPrice(a))} • ${esc(barberName(a.barber_id))}</strong><small>${apptWhenHtml(a)} • ${esc(appointmentServiceName(a)||'Serviço')} • ${appointmentService(a)?.duration||30}min</small><br><small>${esc(a.client_phone||'')}</small></div><div class="walletActions"><button class="primary" onclick="markPaid('${a.id}')">Dar baixa / Recebido</button><button class="gold" onclick="receiveWithDiscount('${a.id}')">Valor a receber</button><button class="gold" onclick="sendPastToWallet('${a.id}')">Enviar para carteira</button><button class="danger" onclick="markPastNoShow('${a.id}')">Cliente faltou</button></div></div>`).join('') || '<div class="empty">Nenhum agendamento passado pendente de baixa.</div>'}</div>`;
   return pastHtml + walletHtml;
 }
 
@@ -44,8 +64,7 @@ function supportPage(){
 }
 
 function reportsPage(){
-  const done=cache.appointments.filter(a=>a.status==='concluido');
-  const rows=cache.shopBarbers.map(b=>{ const ap=done.filter(a=>a.barber_id===b.id); const total=ap.reduce((t,a)=>t+Number(a.services?.price||0),0); const com=total*Number(b.commission_rate||0)/100; return {b,ap,total,com,lucro:total-com}; }).sort((a,b)=>b.total-a.total);
+  const rows=ReportService.ranking();
   return `<div class="card"><h3>Ranking, comissão e lucro</h3>${rows.map((r,i)=>`<div class="item"><div><strong>#${i+1} ${esc(r.b.name)}</strong><small>${r.ap.length} atendimentos concluídos • Comissão: ${r.b.commission_rate||0}%</small></div><div><strong>${money(r.total)}</strong><small>Comissão: ${money(r.com)} • Lucro: ${money(r.lucro)}</small></div></div>`).join("") || '<div class="empty">Sem dados.</div>'}</div>`;
 }
 
@@ -170,7 +189,7 @@ async function logRetentionAction(key, action){
 window.logRetentionAction = logRetentionAction;
 function customerHistoryHtml(c){
   const list=[...c.appointments].sort((a,b)=>apptSortValue(b).localeCompare(apptSortValue(a)));
-  return `<div class="customerHistory"><h4>Histórico de ${esc(c.name)}</h4>${list.map(a=>`<div class="historyLine"><span>${formatDateFullBR(a.date)} ${esc(a.time||'')}</span><b>${esc(a.services?.name||'Serviço')}</b><small>${money(a.services?.price)} • ${esc(barberName(a.barber_id))}</small></div>`).join('')}</div>`;
+  return `<div class="customerHistory"><h4>Histórico de ${esc(c.name)}</h4>${list.map(a=>`<div class="historyLine"><span>${formatDateFullBR(a.date)} ${esc(a.time||'')}</span><b>${esc(appointmentServiceName(a)||'Serviço')}</b><small>${money(appointmentPrice(a))} • ${esc(barberName(a.barber_id))}</small></div>`).join('')}</div>`;
 }
 window.openRetentionHistory = function(key){
   const c=retentionClients().find(x=>x.key===key);
@@ -207,7 +226,7 @@ function csvCell(v){ return '"' + String(v ?? '').replace(/"/g,'""') + '"'; }
 function rowsToCsv(headers, rows){ return [headers.map(csvCell).join(';'), ...rows.map(r=>headers.map(h=>csvCell(r[h])).join(';'))].join('\n'); }
 function appointmentCsvRows(){
   return (cache.appointments||[]).map(a=>({
-    data:a.date||'', horario:a.time||'', cliente:a.client_name||'', telefone:a.client_phone||'', barbeiro:barberName(a.barber_id)||'', servico:a.services?.name||'', valor:Number(a.services?.price||0).toFixed(2).replace('.',','), duracao:a.services?.duration||'', status:a.status||''
+    data:a.date||'', horario:a.time||'', cliente:a.client_name||'', telefone:a.client_phone||'', barbeiro:barberName(a.barber_id)||'', servico:appointmentServiceName(a)||'', valor:Number(a.services?.price||0).toFixed(2).replace('.',','), duracao:a.services?.duration||'', status:a.status||''
   }));
 }
 function clientCsvRows(){
@@ -229,7 +248,7 @@ function findScheduleConflicts(){
   list.forEach((a,idx)=>{
     for(let j=idx+1;j<list.length;j++){
       const b=list[j];
-      if(a.barber_id===b.barber_id && a.date===b.date && intervalOverlaps(a.time,a.services?.duration||30,b.time,b.services?.duration||30)){
+      if(a.barber_id===b.barber_id && a.date===b.date && intervalOverlaps(a.time,appointmentService(a)?.duration||30,b.time,b.services?.duration||30)){
         conflicts.push({a,b});
       }
     }

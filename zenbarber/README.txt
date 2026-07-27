@@ -6,12 +6,12 @@ ANTES DE SUBIR NO NETLIFY:
 3) Depois suba este ZIP no Netlify em Deploy manually.
 
 Login ADM:
-[REMOVIDO — criar usuário admin_master/admin no Supabase]
-[SENHA REMOVIDA]
+admin
+159753
 
 Inclui:
 - serviços editáveis/removíveis por barbeiro
-- login visível; senha não deve ser exposta no ADM
+- login/senha visíveis e editáveis no ADM
 - permissões admin/gerente/barbeiro
 - controle de assinatura/vencimento/bloqueio básico
 - comissão individual

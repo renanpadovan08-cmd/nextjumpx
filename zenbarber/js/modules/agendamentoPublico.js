@@ -1,3 +1,12 @@
+function publicClientTermsAccepted(){
+  return localStorage.getItem('zenbarber_client_terms_version') === ZEN_TERMS_VERSION;
+}
+function publicClientTermsHtml(){
+  const checked = publicClientTermsAccepted() ? 'checked' : '';
+  return `<div class="publicTermsBox">
+    <label class="termsCheck compact"><input id="publicClientTermsCheck" type="checkbox" ${checked}> <span>Li e aceito os Termos de Uso e autorizo o uso dos meus dados para agendamento, atendimento e contato da barbearia.</span></label>
+  </div>`;
+}
 function publicBarberPreviewHtml(id){
   const b = cache.shopBarbers.find(x=>x.id===id) || cache.shopBarbers[0];
   if(!b) return "";
@@ -178,12 +187,12 @@ function publicSlotOptions(barberId,date,serviceId,selected=""){
 
 async function renderBooking(login){
   const {data:owner,error}=await db.from("barbers").select(BARBER_PUBLIC_COLUMNS).eq("login",login).maybeSingle();
-  if(error||!owner){root.innerHTML='<div class="page"><div class="public"><div class="hero"><h1>Link não encontrado</h1><p>Confira se o endereço está correto.</p></div></div></div>';return}
+  if(error||!owner){root.innerHTML='<div class="page publicBookingPage"><div class="public"><div class="hero"><h1>Link não encontrado</h1><p>Confira se o endereço está correto.</p></div></div></div>';return}
   const shop=(owner.shop_name||owner.name||"").trim();
-  const {data:barbs}=await db.from("barbers")
+  const barberPublicQuery = db.from("barbers")
     .select(BARBER_PUBLIC_COLUMNS)
-    .eq("shop_name",shop)
-    .neq("access_status","pendente")
+    .neq("access_status","pendente");
+  const {data:barbs}=await (owner.shop_id ? barberPublicQuery.eq("shop_id", owner.shop_id) : barberPublicQuery.eq("shop_name",shop))
     .neq("access_status","bloqueado")
     .order("created_at");
 
@@ -209,7 +218,7 @@ async function renderBooking(login){
   await loadPublicAppointments(bid,todayISO());
   cache.publicOwnerPhone = owner.phone || "";
   cache.publicShopName = shop;
-  root.innerHTML = `<div class="page"><div class="public"><div class="hero" ${bgStyle(owner.background_url)}><span class="pill">Agendamento online</span><div class="publicHead">${avatar(owner.photo_url,shop)}<div><h1>${esc(shop)}</h1><p class="muted">Escolha barbeiro, serviço, data e horário. O sistema só mostra horários realmente livres.</p></div></div><div class="card"><h3>Novo agendamento</h3><div class="form"><input id="bc" placeholder="Seu nome"><input id="bp" placeholder="Seu WhatsApp"><div><label class="fieldTitle">Escolha o barbeiro</label><div id="publicBarberCards">${publicBarberCardsHtml(bid)}</div><select id="bb" class="hidden" onchange="publicUpdateServices()">${barberOptions(bid)}</select></div><div><label class="fieldTitle">Escolha o serviço</label><div id="publicServiceCards">${publicServiceCardsHtml(bid,sid)}</div><select id="bs" class="hidden" onchange="publicUpdateSlots()">${publicServiceOptions(bid,sid)}</select></div><div class="dateOnly"><label class="fieldTitle">Escolha a data</label><input id="bd" type="date" min="${todayISO()}" value="${todayISO()}" onchange="publicUpdateSlots()"><select id="bt" class="hidden" onchange="updatePublicSelectionHighlight()">${publicSlotOptions(bid,todayISO(),sid)}</select></div><label class="fieldTitle">Escolha o horário</label><div id="publicTimeGrid" class="publicTimeGrid">${publicTimeButtonsFromAppointments(bid,todayISO(),sid,cache.appointments)}</div>${publicSelectionSummaryHtml()}<button id="confirmPublicBtn" class="primary" type="button" onclick="publicSchedule()">Confirmar agendamento</button><a target="_blank" href="${wa(owner.phone,`Olá, vim pelo link de agendamento da ${shop}.`)}"><button class="whats" type="button" style="width:100%">Falar no WhatsApp</button></a></div></div></div></div></div>`;
+  root.innerHTML = `<div class="page"><div class="public"><div class="hero" ${bgStyle(owner.background_url)}><span class="pill">Agendamento online</span><div class="publicHead">${avatar(owner.photo_url,shop)}<div><h1>${esc(shop)}</h1><p class="muted">Escolha barbeiro, serviço, data e horário. O sistema só mostra horários realmente livres.</p></div></div><div class="card"><h3>Novo agendamento</h3><div class="form"><input id="bc" placeholder="Seu nome"><input id="bp" placeholder="Seu WhatsApp"><div><label class="fieldTitle">Escolha o barbeiro</label><div id="publicBarberCards">${publicBarberCardsHtml(bid)}</div><select id="bb" class="hidden" onchange="publicUpdateServices()">${barberOptions(bid)}</select></div><div><label class="fieldTitle">Escolha o serviço</label><div id="publicServiceCards">${publicServiceCardsHtml(bid,sid)}</div><select id="bs" class="hidden" onchange="publicUpdateSlots()">${publicServiceOptions(bid,sid)}</select></div><div class="dateOnly"><label class="fieldTitle">Escolha a data</label><input id="bd" type="date" min="${todayISO()}" value="${todayISO()}" onchange="publicUpdateSlots()"><select id="bt" class="hidden" onchange="updatePublicSelectionHighlight()">${publicSlotOptions(bid,todayISO(),sid)}</select></div><label class="fieldTitle">Escolha o horário</label><div id="publicTimeGrid" class="publicTimeGrid">${publicTimeButtonsFromAppointments(bid,todayISO(),sid,cache.appointments)}</div>${publicSelectionSummaryHtml()}${publicClientTermsHtml()}<button id="confirmPublicBtn" class="primary" type="button" onclick="publicSchedule()">Confirmar agendamento</button><a target="_blank" href="${wa(owner.phone,`Olá, vim pelo link de agendamento da ${shop}.`)}"><button class="whats" type="button" style="width:100%">Falar no WhatsApp</button></a></div></div></div></div></div>`;
   setTimeout(updatePublicSelectionHighlight, 0);
 }
 window.selectPublicBarber = id => {
@@ -295,10 +304,14 @@ window.publicSchedule = async () => {
   const date = document.getElementById("bd")?.value || "";
   const time = document.getElementById("bt")?.value || "";
   if(!name || !phone || !barberId || !serviceId || !date || !time) return toast("Preencha todos os campos");
+  const termsOk = document.getElementById("publicClientTermsCheck")?.checked || publicClientTermsAccepted();
+  if(!termsOk) return toast("Aceite os Termos de Uso para confirmar o agendamento.");
+  localStorage.setItem('zenbarber_client_terms_version', ZEN_TERMS_VERSION);
+  localStorage.setItem('zenbarber_client_terms_at', new Date().toISOString());
   if(btn){ btn.disabled = true; btn.textContent = "Agendando..."; }
   try{
     if(await hasConflict(barberId,date,time,serviceId)) return toast("Esse horário acabou de ficar ocupado. Escolha outro horário disponível.");
-    const {error}=await db.from("appointments").insert({barber_id:barberId,service_id:serviceId,client_name:name,client_phone:phone,date:date,time:time,status:"agendado"});
+    const {error}=await db.from("appointments").insert({shop_id:(barberById(barberId)?.shop_id || null),barber_id:barberId,service_id:serviceId,client_name:name,client_phone:phone,date:date,time:time,status:"agendado"});
     if(error) return toast("Erro ao salvar: " + error.message);
     cache.appointments.push({id:`local-${Date.now()}`,barber_id:barberId,service_id:serviceId,date,time,status:"agendado",services:{duration:durationOfService(serviceId)}});
 

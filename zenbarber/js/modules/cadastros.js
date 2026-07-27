@@ -66,10 +66,17 @@ async function saveServiceOrder(barberId, ids){
   renderApp();
 }
 
+function managerAgendaLockCard(list){
+  if(!canManageAll()) return "";
+  const employees = (list||[]).filter(b=>String(b.id)!==String(me?.id));
+  return `<div class="card agendaLockManager"><h3>Permissões e bloqueio de agenda</h3><p class="muted">O gerente decide quem pode bloquear a própria agenda. Também pode pausar a agenda de um funcionário quando precisar.</p>${employees.map(b=>{ const locked=isEmployeeAgendaLocked(b.id); const until=employeeAgendaLockUntil(b.id); const allowed=barberCanSelfBlock(b); return `<div class="item barberLockItem ${locked?'locked':''}"><div><strong>${esc(b.name)}</strong><small>${allowed?'Pode bloquear a própria agenda':'Não pode bloquear a própria agenda'} • ${locked?`agenda bloqueada até ${formatDateFullBR(until)}`:'agenda liberada'} • ${esc(b.phone||'sem WhatsApp')}</small></div><div class="row"><button class="${allowed?'danger':'primary'}" onclick="toggleSelfBlockPermission('${b.id}', ${allowed?'false':'true'})">${allowed?'Desativar bloqueio próprio':'Ativar bloqueio próprio'}</button>${locked?`<button class="primary" onclick="unlockEmployeeAgenda('${b.id}')">Desbloquear agenda</button>`:`<button class="danger" onclick="lockEmployeeAgenda('${b.id}')">Bloquear agenda</button>`}</div></div>`;}).join("") || '<div class="empty">Nenhum barbeiro funcionário encontrado. O gerente não aparece nesta lista.</div>'}</div>`;
+}
+
 function barbersPage(){
   const list = cache.shopBarbers.filter(b => (b.access_status||"ativo") !== "pendente");
   const nameManager = canManageAll() ? `<div class="card"><h3>Editar nomes dos barbeiros</h3><p class="muted">O gerente pode alterar o nome de qualquer barbeiro da barbearia, incluindo o próprio nome. A alteração aparece na agenda, no financeiro, nas comissões e no link do cliente.</p>${list.map(b=>`<div class="item"><div><strong>${esc(b.name)}</strong><small>${b.id===me.id?'Seu usuário / gerente':'Barbeiro da equipe'}</small></div><div class="nameEdit"><input id="name_${b.id}" value="${esc(b.name)}" placeholder="Nome do barbeiro"><button class="primary" onclick="saveBarberName('${b.id}')">Salvar nome</button></div></div>`).join("")}</div>` : "";
-  return `${nameManager}<div class="card"><h3>Solicitar novo barbeiro</h3><p class="muted">Por segurança, novos barbeiros não são liberados automaticamente. Ao solicitar, vai aparecer no Painel ADM como pendente e também abre o WhatsApp para pedir ativação.</p><div class="grid3"><input id="bn" placeholder="Nome do novo barbeiro"><input id="bph" placeholder="WhatsApp do barbeiro"><input id="bobs" placeholder="Observação / função (opcional)"><button class="primary" onclick="requestShopBarber()">Solicitar ativação pelo WhatsApp</button></div></div><div class="card"><h3>Barbeiros da ${esc(sameShopName())}</h3><p class="muted">Cada barbeiro abaixo possui agenda própria. Os serviços também são separados por barbeiro.</p>${list.map(b=>`<div class="item barberItem"><div class="barberInfo">${barberAvatar(b)}<div><strong>${esc(b.name)}</strong><small>${esc(b.phone||'sem WhatsApp')}</small><div class="linkBox">${publicDashboardLink()} — link único da barbearia</div></div></div><div class="row"><button class="primary" onclick="openEditBarber('${b.id}')">Editar completo</button><a target="_blank" href="${wa(b.phone,`Olá ${b.name}, você foi adicionado à agenda da ${sameShopName()}. Link da barbearia: ${publicDashboardLink()}`)}"><button class="whats">WhatsApp</button></a></div></div>`).join("")}</div>`;
+  const agendaLockManager = managerAgendaLockCard(list);
+  return `${nameManager}${agendaLockManager}<div class="card"><h3>Solicitar novo barbeiro</h3><p class="muted">Por segurança, novos barbeiros não são liberados automaticamente. Ao solicitar, vai aparecer no Painel ADM como pendente e também abre o WhatsApp para pedir ativação.</p><div class="grid3"><input id="bn" placeholder="Nome do novo barbeiro"><input id="bph" placeholder="WhatsApp do barbeiro"><input id="bobs" placeholder="Observação / função (opcional)"><button class="primary" onclick="requestShopBarber()">Solicitar ativação pelo WhatsApp</button></div></div><div class="card"><h3>Barbeiros da ${esc(sameShopName())}</h3><p class="muted">Cada barbeiro abaixo possui agenda própria. Os serviços também são separados por barbeiro.</p>${list.map(b=>`<div class="item barberItem"><div class="barberInfo">${barberAvatar(b)}<div><strong>${esc(b.name)}</strong><small>${esc(b.phone||'sem WhatsApp')}</small><div class="linkBox">${publicDashboardLink()} — link único da barbearia</div></div></div><div class="row"><button type="button" class="primary" data-edit-barber-id="${esc(b.id)}">Editar completo</button><a target="_blank" href="${wa(b.phone,`Olá ${b.name}, você foi adicionado à agenda da ${sameShopName()}. Link da barbearia: ${publicDashboardLink()}`)}"><button class="whats">WhatsApp</button></a></div></div>`).join("")}</div>`;
 }
 
 window.saveBarberName = async id => {
@@ -87,6 +94,73 @@ window.saveBarberName = async id => {
   renderApp();
 };
 
+
+window.toggleSelfBlockPermission = async (barberId, enabled) => {
+  if(!canManageAll()) return toast('Acesso restrito.');
+  const b=barberById(barberId);
+  if(!b) return toast('Barbeiro não encontrado.');
+  const nextNote = barberNoteSetFlag(b.activation_note, BARBER_NOTE_FLAG_SELF_BLOCK, !!enabled);
+  const {data,error}=await db.from('barbers').update({activation_note:nextNote}).eq('id',barberId).select(BARBER_SAFE_COLUMNS).maybeSingle();
+  if(error) return toast(error.message);
+  cache.shopBarbers = cache.shopBarbers.map(x=>x.id===barberId?{...x,...(data||{}),activation_note:nextNote}:x);
+  toast(enabled ? 'Permissão de bloqueio próprio ativada.' : 'Permissão de bloqueio próprio desativada.');
+  await loadMine();
+  renderApp();
+};
+
+function isManagerLockAppt(a){
+  return isClosureAppt(a) && String(a?.client_name||'').toLowerCase().includes('bloqueio do gerente');
+}
+function isEmployeeAgendaLocked(barberId){
+  return (cache.appointments||[]).some(a=>String(a.barber_id)===String(barberId) && a.date>=todayISO() && isManagerLockAppt(a));
+}
+function employeeAgendaLockUntil(barberId){
+  const dates=(cache.appointments||[]).filter(a=>String(a.barber_id)===String(barberId) && a.date>=todayISO() && isManagerLockAppt(a)).map(a=>a.date).sort();
+  return dates[dates.length-1] || todayISO();
+}
+window.lockEmployeeAgenda = async barberId => {
+  if(!canManageAll()) return toast('Acesso restrito.');
+  if(String(barberId)===String(me?.id)) return toast('Use Funcionamento para bloquear sua própria agenda.');
+  const b=barberById(barberId);
+  if(!b) return toast('Barbeiro não encontrado.');
+  const days=Number(prompt(`Bloquear a agenda de ${b.name} por quantos dias?`, '30') || 0);
+  if(!days || days<1) return toast('Informe uma quantidade de dias válida.');
+  if(days>365) return toast('Limite máximo: 365 dias por bloqueio.');
+  const reason=(prompt('Motivo do bloqueio (opcional):', 'Bloqueio do gerente') || 'Bloqueio do gerente').trim();
+  if(!confirm(`Confirmar bloqueio da agenda de ${b.name} por ${days} dia(s)?\n\nOs agendamentos já existentes continuam aparecendo, mas novos horários ficam indisponíveis.`)) return;
+  try{
+    const rows=[];
+    for(let i=0;i<days;i++){
+      const date=addDays(todayISO(),i);
+      const startHour=workStart(b,date)||OPEN;
+      const dur=Math.max(30, minutes(workEnd(b,date)||CLOSE)-minutes(startHour));
+      const serviceId=await ensureClosureService(b.id,dur);
+      const exists=(cache.appointments||[]).some(a=>String(a.barber_id)===String(b.id) && a.date===date && isManagerLockAppt(a));
+      if(!exists) rows.push({barber_id:b.id,service_id:serviceId,client_name:`Agenda fechada - Bloqueio do gerente - ${reason}`,client_phone:'',date,time:startHour,status:'bloqueio'});
+    }
+    if(!rows.length) return toast('Essa agenda já estava bloqueada no período.');
+    const {error}=await db.from('appointments').insert(rows);
+    if(error) return toast(error.message);
+    toast('Agenda do funcionário bloqueada.');
+    await loadMine();
+    renderApp();
+  }catch(err){ toast(err.message || 'Erro ao bloquear agenda.'); }
+};
+window.unlockEmployeeAgenda = async barberId => {
+  if(!canManageAll()) return toast('Acesso restrito.');
+  const b=barberById(barberId);
+  const locks=(cache.appointments||[]).filter(a=>String(a.barber_id)===String(barberId) && a.date>=todayISO() && isManagerLockAppt(a));
+  if(!locks.length) return toast('Essa agenda já está liberada.');
+  if(!confirm(`Desbloquear a agenda de ${b?.name || 'funcionário'} e liberar novos horários?`)) return;
+  const ids=locks.map(a=>a.id).filter(id=>!String(id).startsWith('local-'));
+  if(!ids.length) return toast('Nenhum bloqueio válido encontrado para desbloquear.');
+  const {error}=await db.from('appointments').update({status:'cancelado'}).in('id',ids);
+  if(error) return toast(error.message);
+  toast('Agenda do funcionário desbloqueada.');
+  await loadMine();
+  renderApp();
+};
+
 function slugify(v){ return String(v||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"") || "barbeiro"; }
 window.requestShopBarber = async () => {
   const nome = bn.value.trim();
@@ -95,7 +169,7 @@ window.requestShopBarber = async () => {
   if(!nome || !phone) return toast("Preencha nome e WhatsApp do barbeiro");
   const login = `${slugify(nome)}-${Date.now().toString().slice(-5)}`;
   const row = {
-    name:nome, login, password:"aguardando", phone, shop_name:sameShopName(), role:"barber",
+    shop_id:sameShopId() || null, name:nome, login, password:"aguardando", phone, shop_name:sameShopName(), role:"barber",
     access_status:"pendente", activation_note:obs, photo_url:"", background_url:"",
     work_start:OPEN, work_end:CLOSE, commission_rate:0, off_days: cache.shopBarbers[0]?.off_days || ""
   };
@@ -107,27 +181,101 @@ window.requestShopBarber = async () => {
   bn.value=""; bph.value=""; bobs.value="";
 };
 
-window.openEditBarber = id => {
-  const b = cache.shopBarbers.find(x=>x.id===id); if(!b) return;
-  document.body.insertAdjacentHTML("beforeend",`<div class="modalBack" id="modal"><div class="modal"><h2>Editar barbeiro</h2><p class="muted">Aqui você pode trocar nome, WhatsApp e foto individual do barbeiro sem alterar a logo da barbearia nem apagar a agenda dele.</p><div class="form"><input id="en" value="${esc(b.name)}" placeholder="Nome"><input id="el" value="${esc(b.login)}" placeholder="Login"><input id="ep" type="password" placeholder="Nova senha (deixe vazio para manter)"><input id="ew" value="${esc(b.phone||'')}" placeholder="WhatsApp"><select id="erole"><option value="barber" ${(!b.role||b.role==='barber')?'selected':''}>Barbeiro</option><option value="gerente" ${b.role==='gerente'?'selected':''}>Gerente</option></select><input id="ecom" type="number" value="${b.commission_rate||0}" placeholder="Comissão %"><div class="grid2"><input id="ews" type="time" value="${b.work_start||OPEN}"><input id="ewe" type="time" value="${b.work_end||CLOSE}"><input id="ebs" type="time" value="${b.break_start||''}" placeholder="Início almoço"><input id="ebe" type="time" value="${b.break_end||''}" placeholder="Fim almoço"></div><input id="eoff" value="${esc(b.off_days||'')}" placeholder="Folgas: 0=dom,1=seg... ex: 0,1"><div class="previewRow">${barberAvatar(b)}<span class="muted">Foto atual do barbeiro</span></div>${fileField("ephotoFile","Trocar foto do barbeiro")}<div class="row"><button class="primary" onclick="saveEditBarber('${b.id}')">Salvar alterações</button><button onclick="modal.remove()">Cancelar</button></div></div></div></div>`);
+function barberWorkScheduleHtml(b){
+  const sched = parseWeeklySchedule(b || {});
+  return `<div class="barberWorkBox"><h3>Horários de atendimento</h3><p class="muted">Defina os dias e horários deste barbeiro. A agenda interna e o link público do cliente usam exatamente esta configuração.</p><div class="row"><button type="button" onclick="copyBarberWorkingDay(1,'week')">Copiar segunda para dias úteis</button><button type="button" onclick="copyBarberWorkingDay(1,'all')">Copiar segunda para todos</button></div><div class="hoursList barberHoursList">${DAY_NAMES.map((d,i)=>{ const x=sched[i] || {}; return `<div class="hoursDay barberHoursDay"><label class="switchLine"><input id="bwopen_${i}" type="checkbox" ${x.open?'checked':''} onchange="toggleBarberWorkDay(${i})"><span class="switchVisual"></span><b>${d}</b></label><div id="bwbox_${i}" class="hoursFields ${x.open?'':'hidden'}"><label>Início ${timeSelect(`bwstart_${i}`,x.start||OPEN,'Início')}</label><label>Pausa almoço ${timeSelect(`bwbs_${i}`,x.break_start||'','Sem pausa')}</label><label>Até ${timeSelect(`bwbe_${i}`,x.break_end||'','Sem pausa')}</label><label>Fim ${timeSelect(`bwend_${i}`,x.end||CLOSE,'Fim')}</label></div></div>`; }).join('')}</div><small class="muted">Para deixar sem almoço, mantenha os dois campos da pausa como “Sem pausa”. Para fechar um dia, desmarque o dia.</small></div>`;
+}
+window.toggleBarberWorkDay = i => { const box=document.getElementById('bwbox_'+i); if(box) box.classList.toggle('hidden', !document.getElementById('bwopen_'+i)?.checked); };
+window.copyBarberWorkingDay = (source=1,mode='week') => {
+  const srcOpen=!!document.getElementById('bwopen_'+source)?.checked;
+  const srcStart=document.getElementById('bwstart_'+source)?.value || OPEN;
+  const srcEnd=document.getElementById('bwend_'+source)?.value || CLOSE;
+  const srcBs=document.getElementById('bwbs_'+source)?.value || '';
+  const srcBe=document.getElementById('bwbe_'+source)?.value || '';
+  const targets = mode==='week' ? [1,2,3,4,5] : [0,1,2,3,4,5,6];
+  targets.forEach(i=>{
+    const open=document.getElementById('bwopen_'+i); if(open) open.checked=srcOpen;
+    const st=document.getElementById('bwstart_'+i); if(st) st.value=srcStart;
+    const en=document.getElementById('bwend_'+i); if(en) en.value=srcEnd;
+    const bs=document.getElementById('bwbs_'+i); if(bs) bs.value=srcBs;
+    const be=document.getElementById('bwbe_'+i); if(be) be.value=srcBe;
+    toggleBarberWorkDay(i);
+  });
+  toast(mode==='week' ? 'Horários copiados para segunda a sexta.' : 'Horários copiados para todos os dias.');
 };
+function collectBarberWorkSchedule(){
+  const schedule=[];
+  for(let i=0;i<7;i++){
+    const open=!!document.getElementById('bwopen_'+i)?.checked;
+    const start=(document.getElementById('bwstart_'+i)?.value||OPEN).trim();
+    const end=(document.getElementById('bwend_'+i)?.value||CLOSE).trim();
+    const bs=(document.getElementById('bwbs_'+i)?.value||'').trim();
+    const be=(document.getElementById('bwbe_'+i)?.value||'').trim();
+    if(open){
+      if(!isValidHour(start) || !isValidHour(end) || minutes(end)<=minutes(start)){ toast(`Confira início e fim de ${DAY_NAMES[i]}.`); return null; }
+      if((bs && !be) || (!bs && be)){ toast(`Preencha início e fim da pausa de ${DAY_NAMES[i]}, ou deixe os dois vazios.`); return null; }
+      if(bs && be){
+        if(!isValidHour(bs) || !isValidHour(be) || minutes(be)<=minutes(bs)){ toast(`Confira a pausa de almoço de ${DAY_NAMES[i]}.`); return null; }
+        if(minutes(bs)<minutes(start) || minutes(be)>minutes(end)){ toast(`A pausa de ${DAY_NAMES[i]} precisa estar dentro do expediente.`); return null; }
+      }
+    }
+    schedule.push({open,start,end,break_start:bs,break_end:be});
+  }
+  return schedule;
+}
+
+window.openEditBarber = id => {
+  // HOTFIX: busca robusta por ID em todas as listas carregadas.
+  const allBarbers = [
+    ...(cache.shopBarbers || []),
+    ...(cache.barbers || []),
+    ...(cache.publicBarbers || [])
+  ];
+  const b = allBarbers.find(x => String(x.id) === String(id));
+  if(!b) {
+    toast('Não consegui abrir este barbeiro. Atualize a página e tente novamente.');
+    console.warn('ZenBarber: barbeiro não encontrado para edição', id, allBarbers);
+    return;
+  }
+  if(!canManageAll() && String(me?.id)!==String(b.id)) return toast('Você só pode editar seu próprio perfil.');
+  const oldModal = document.getElementById('modal');
+  if(oldModal) oldModal.remove();
+  const canEditSensitive = canManageAll();
+  document.body.insertAdjacentHTML("beforeend",`<div class="modalBack" id="modal"><div class="modal"><h2>Editar barbeiro</h2><p class="muted">Troque os dados do barbeiro e defina o período de trabalho por dia, com pausa para almoço. Esses horários ficam vinculados à agenda do barbeiro e ao link público de agendamento.</p><div class="form"><input id="en" value="${esc(b.name)}" placeholder="Nome"><input id="el" value="${esc(b.login||'')}" placeholder="Login" ${canEditSensitive?'':'disabled'}><input id="ep" type="password" placeholder="Nova senha (deixe vazio para manter)" ${canEditSensitive?'':'disabled'}><input id="ew" value="${esc(b.phone||'')}" placeholder="WhatsApp"><select id="erole" ${canEditSensitive?'':'disabled'}><option value="barber" ${(!b.role||b.role==='barber')?'selected':''}>Barbeiro</option><option value="gerente" ${b.role==='gerente'?'selected':''}>Gerente</option></select><input id="ecom" type="number" value="${b.commission_rate||0}" placeholder="Comissão %" ${canEditSensitive?'':'disabled'}>${barberWorkScheduleHtml(b)}<div class="previewRow">${barberAvatar(b)}<span class="muted">Foto atual do barbeiro</span></div>${fileField("ephotoFile","Trocar foto do barbeiro")}<div class="row"><button type="button" class="primary" onclick="saveEditBarber('${b.id}')">Salvar alterações</button><button type="button" onclick="document.getElementById('modal')?.remove()">Cancelar</button></div></div></div></div>`);
+};
+
+// HOTFIX: delegação de clique para o botão Editar completo.
+// Assim a ação funciona mesmo quando o navegador/PWA usa cache ou quando o botão é renderizado dinamicamente.
+if(!window.__zenEditBarberDelegationInstalled){
+  window.__zenEditBarberDelegationInstalled = true;
+  document.addEventListener('click', function(ev){
+    const btn = ev.target && ev.target.closest ? ev.target.closest('[data-edit-barber-id]') : null;
+    if(!btn) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    window.openEditBarber(btn.getAttribute('data-edit-barber-id'));
+  }, true);
+}
 window.saveEditBarber = async id => {
-  // Não enviar break_start/break_end para o Supabase: a tabela atual de produção não tem essas colunas.
-  // Os intervalos por dia continuam guardados dentro de off_days como SCHEDULE_JSON, usado pela agenda.
+  if(!canManageAll() && String(me?.id)!==String(id)) return toast('Você só pode editar seu próprio perfil.');
+  const currentBarber = cache.shopBarbers.find(x=>String(x.id)===String(id)) || {};
+  const schedule = collectBarberWorkSchedule();
+  if(!schedule) return;
+  const firstOpen = schedule.find(x=>x.open) || {start:OPEN,end:CLOSE};
+  const canEditSensitive = canManageAll();
   const row={
     name:en.value.trim(),
-    login:el.value.trim().toLowerCase().replace(/\s+/g,"-"),
+    login:canEditSensitive ? el.value.trim().toLowerCase().replace(/\s+/g,"-") : (currentBarber.login || me?.login || '').trim(),
     phone:ew.value.trim(),
-    role:erole.value,
-    commission_rate:Number(ecom.value||0),
-    work_start:ews.value||OPEN,
-    work_end:ewe.value||CLOSE,
-    off_days:eoff.value||""
+    role:canEditSensitive ? erole.value : (currentBarber.role || me?.role || 'barber'),
+    commission_rate:canEditSensitive ? Number(ecom.value||0) : Number(currentBarber.commission_rate||0),
+    work_start:firstOpen.start||OPEN,
+    work_end:firstOpen.end||CLOSE,
+    off_days:'SCHEDULE_JSON:'+JSON.stringify(schedule)
   };
-  const currentBarber = cache.shopBarbers.find(x=>x.id===id) || {};
   const newBarberPhoto = await imageInputData("ephotoFile", barberPhotoUrl(currentBarber));
-  if(newBarberPhoto) row.activation_note = BARBER_PHOTO_PREFIX + newBarberPhoto;
-  const newPassword = ep.value.trim();
+  if(newBarberPhoto) row.activation_note = barberNoteSetPhoto(currentBarber.activation_note, newBarberPhoto);
+  const newPassword = canEditSensitive ? ep.value.trim() : '';
   if(newPassword) await setBarberPasswordFields(row, row.login, newPassword);
   if(!row.name||!row.login) return toast("Nome e login são obrigatórios");
   let {data,error}=await db.from("barbers").update(row).eq("id",id).select(BARBER_SAFE_COLUMNS).single();
@@ -136,7 +284,9 @@ window.saveEditBarber = async id => {
     ({data,error}=await db.from("barbers").update(legacyRow).eq("id",id).select(BARBER_SAFE_COLUMNS).single());
   }
   if(error) return toast(error.message);
-  if(me && me.id===id){ me={...me,...data,role:data.role || me.role || "barber"}; sessionStorage.setItem("zenbarber_user", JSON.stringify(me)); modal.remove(); await loadMine(); renderApp(); } else { modal.remove(); await loadMine(); renderApp(); }
+  toast('Barbeiro atualizado. A agenda e o link público já usam os novos horários.');
+  if(me && String(me.id)===String(id)){ me={...me,...data,role:data.role || me.role || "barber"}; sessionStorage.setItem("zenbarber_user", JSON.stringify(me)); }
+  modal.remove(); await loadMine(); renderApp();
 };
 
 
@@ -160,8 +310,10 @@ window.saveCommission = async id => {
 
 function profilePage(){
   const b = cache.shopBarbers.find(x=>x.id===me.id) || me;
-  return `<div class="card"><h3>Meu perfil / Configurações</h3><p class="muted">Altere os dados gerais da barbearia, logo e fundo da página pública. A foto individual de cada barbeiro é alterada na aba Barbeiros.</p><div class="profilePreview">${avatar(b.photo_url,b.name)}<div><strong>${esc(b.name)}</strong><small>${esc(sameShopName())}</small></div></div><div class="grid3"><input id="pn" value="${esc(b.name||'')}" placeholder="Nome"><input id="pl" value="${esc(b.login||'')}" placeholder="Login"><input id="pp" type="password" placeholder="Nova senha (deixe vazio para manter)"><input id="pw" value="${esc(b.phone||'')}" placeholder="WhatsApp"><input id="pshop" value="${esc(b.shop_name||'')}" placeholder="Nome da barbearia">${fileField("pphotoFile","Trocar logo da barbearia")}${fileField("pbgFile","Trocar fundo da página do cliente")}</div><br><button class="primary" onclick="saveProfile()">Salvar perfil</button></div>`;
+  const funcionamentoCard = canManageAll() ? `<div class="card"><h3>Funcionamento da Barbearia</h3><p class="muted">Configure dias de atendimento, horário de abertura, horário de fechamento, intervalos e horários especiais da barbearia. Essa configuração alimenta a agenda interna e o link público do cliente.</p><div class="profileSettingsGrid"><div><strong>Dias de atendimento</strong><small>Abra ou feche cada dia da semana.</small></div><div><strong>Horário de abertura</strong><small>Defina o início do expediente.</small></div><div><strong>Horário de fechamento</strong><small>Defina o fim do expediente.</small></div><div><strong>Intervalos</strong><small>Bloqueie almoço ou pausas.</small></div><div><strong>Horários especiais</strong><small>Feche feriados, férias ou dias específicos.</small></div></div><br><button class="primary" onclick="page='hours';renderApp()">Abrir Funcionamento</button></div>` : `<div class="card"><h3>Funcionamento da Barbearia</h3><p class="muted">Somente gerente ou dono da barbearia pode alterar dias de atendimento, horários, intervalos e horários especiais.</p></div>`;
+  return `<div class="card"><h3>Meu perfil / Configurações</h3><p class="muted">Altere os dados gerais da barbearia, logo e fundo da página pública. A foto individual de cada barbeiro é alterada na aba Barbeiros.</p><div class="profilePreview">${avatar(b.photo_url,b.name)}<div><strong>${esc(b.name)}</strong><small>${esc(sameShopName())}</small></div></div><div class="grid3"><input id="pn" value="${esc(b.name||'')}" placeholder="Nome"><input id="pl" value="${esc(b.login||'')}" placeholder="Login"><input id="pp" type="password" placeholder="Nova senha (deixe vazio para manter)"><input id="pw" value="${esc(b.phone||'')}" placeholder="WhatsApp"><input id="pshop" value="${esc(b.shop_name||'')}" placeholder="Nome da barbearia">${fileField("pphotoFile","Trocar logo da barbearia")}${fileField("pbgFile","Trocar fundo da página do cliente")}</div><br><button class="primary" onclick="saveProfile()">Salvar perfil</button></div>${funcionamentoCard}`;
 }
+
 window.saveProfile = async () => {
   const current = cache.shopBarbers.find(x=>x.id===me.id) || me;
   const row={name:pn.value.trim(),login:pl.value.trim().toLowerCase().replace(/\s+/g,"-"),phone:pw.value.trim(),shop_name:pshop.value.trim()||pn.value.trim(),photo_url:await imageInputData("pphotoFile", current.photo_url||""),background_url:await imageInputData("pbgFile", current.background_url||"")};
@@ -271,7 +423,7 @@ async function ensureClosureService(barberId,duration){
   const name='Fechamento de agenda';
   const found=cache.services.find(s=>s.barber_id===barberId && s.name===name && Number(s.duration||0)===Number(duration||0));
   if(found) return found.id;
-  const {data,error}=await db.from('services').insert({barber_id:barberId,name,price:0,duration:Number(duration||720)}).select().single();
+  const {data,error}=await db.from('services').insert(shopScopedPayload({barber_id:barberId,name,price:0,duration:Number(duration||720)})).select().single();
   if(error) throw new Error(error.message);
   cache.services.push(data);
   return data.id;
@@ -296,7 +448,7 @@ window.closeSpecificDays = async () => {
         rows.push({barber_id:b.id,service_id:serviceId,client_name:`Agenda fechada - ${reason}`,client_phone:'',date,time:startHour,status:'bloqueio'});
       }
     }
-    const {error}=await db.from('appointments').insert(rows);
+    const {error}=await db.from('appointments').insert(rows.map(r=>shopScopedPayload(r)));
     if(error) return toast(error.message);
     toast('Agenda fechada no(s) dia(s) selecionado(s).');
     await loadMine(); renderApp();

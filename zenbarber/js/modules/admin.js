@@ -132,7 +132,7 @@ function adminShopCard(b){
         <button class="primary" onclick="adminEditShopBilling('${b.id}')">Editar barbearia</button>
         <button onclick="adminToggleMultiunit('${b.id}')">${adminHasMultiunit(b)?'Bloquear multiunidade':'Liberar multiunidade'}</button>
         <a target="_blank" href="${wa(b.phone,msg)}"><button class="whats">Cobrar no WhatsApp</button></a>
-        <button onclick="adminMarkPaid('${b.id}')">Marcar como pago</button>
+        <button onclick="adminMarkPaid('${b.id}')">Marcar como pago</button><button class="gold" onclick="adminOpenCashPassword('${b.id}')">Senha do caixa</button>
         <button class="danger" onclick="adminToggleBlock('${b.id}')">${(bill.status||'ativo')==='bloqueado'?'Reativar':'Bloquear'}</button>
       </div>
       <small class="muted">${esc(bill.note||'Sem observações internas.')}</small>
@@ -142,6 +142,11 @@ function adminShopCard(b){
 
 async function renderAdmin(){
   if(!isAdminRole()){ root.innerHTML = `<div class="page"><div class="card"><h2>Acesso negado</h2><p class="muted">Este painel é exclusivo do Admin Master.</p><button onclick="logout()">Sair</button></div></div>`; return; }
+  if(page === "support" && typeof supportPage === "function"){
+    layout("Suporte / Chat", "Conversas em tempo real das barbearias", supportPage());
+    setTimeout(()=>{ if(typeof supportInit === "function") supportInit(); },80);
+    return;
+  }
   const {data,error}=await db.from("barbers").select(typeof ADMIN_BARBER_COLUMNS !== 'undefined' ? ADMIN_BARBER_COLUMNS : BARBER_SAFE_COLUMNS).order("created_at",{ascending:false}); if(error) toast(error.message); cache.barbers=data||[];
   cache.shopBarbers = cache.barbers;
   cache.allShopBarbers = cache.barbers;
@@ -234,3 +239,38 @@ window.adminToggleBlock = async id => { if(!requireAdminMaster()) return;
 window.adminApprove = async id => { if(!requireAdminMaster()) return; const {error}=await db.from("barbers").update({access_status:"ativo"}).eq("id",id); if(error) toast(error.message); else {toast("Barbeiro autorizado"); renderAdmin();} };
 window.adminDelete = async id => { if(!requireAdminMaster()) return; if(!confirm("Excluir este perfil?")) return; await db.from("barbers").delete().eq("id",id); const all=adminBillingLoad(); delete all[id]; adminBillingSave(all); if(typeof modal!=="undefined" && modal) modal.remove(); renderAdmin(); };
 
+
+
+// ===== Admin Master: senha do Controle de Caixa =====
+async function adminMakeCashPasswordHashForShop(b, password){
+  const key = String(b?.shop_id || ('shop:' + String(b?.shop_name||b?.name||'').trim().toLowerCase()));
+  return CASH_PASS_PREFIX + await sha256Hex('ZenBarber|cash|' + key + '|' + String(password||'') + '|v1');
+}
+window.adminOpenCashPassword = async function(id){
+  if(!requireAdminMaster()) return;
+  const b = cache.barbers.find(x=>String(x.id)===String(id));
+  if(!b) return toast('Barbearia não encontrada.');
+  let q = db.from('cash_access_settings').select('*').limit(1);
+  q = b.shop_id ? q.eq('shop_id', b.shop_id) : q.eq('shop_name', b.shop_name||b.name||'');
+  const {data,error}=await q;
+  const cfg = !error ? (data||[])[0] : null;
+  document.body.insertAdjacentHTML('beforeend',`<div class="modalBack" id="modal"><div class="modal"><h2>Senha do Controle de Caixa</h2><p class="muted">Barbearia: <b>${esc(b.shop_name||b.name||'')}</b></p><div class="form"><div class="linkBox">Status: ${cfg?.password_hash?'senha criada':'sem senha criada'}</div><input id="adminCashPass" type="password" placeholder="Nova senha do dono"><small class="muted">Por segurança, a senha não é exibida depois de salva. Você pode apenas criar ou resetar.</small><div class="row"><button class="primary" onclick="adminSaveCashPassword('${b.id}')">Salvar / Resetar senha</button><button onclick="modal.remove()">Cancelar</button></div></div></div></div>`);
+};
+window.adminSaveCashPassword = async function(id){
+  if(!requireAdminMaster()) return;
+  const b = cache.barbers.find(x=>String(x.id)===String(id));
+  const pass = String(document.getElementById('adminCashPass')?.value||'').trim();
+  if(!b) return toast('Barbearia não encontrada.');
+  if(pass.length < 4) return toast('Use uma senha com pelo menos 4 caracteres.');
+  const hash = await adminMakeCashPasswordHashForShop(b, pass);
+  const row = { shop_id:b.shop_id||null, shop_name:b.shop_name||b.name||'', owner_barber_id:b.id, password_hash:hash, updated_by:me?.name||'Admin' };
+  let q = db.from('cash_access_settings').select('id').limit(1);
+  q = b.shop_id ? q.eq('shop_id', b.shop_id) : q.eq('shop_name', b.shop_name||b.name||'');
+  const existing = await q;
+  let res;
+  if(existing.data && existing.data[0]) res = await db.from('cash_access_settings').update(row).eq('id', existing.data[0].id);
+  else res = await db.from('cash_access_settings').insert(row);
+  if(res.error) return toast(res.error.message);
+  if(typeof modal!=='undefined' && modal) modal.remove();
+  toast('Senha do Controle de Caixa salva.');
+};

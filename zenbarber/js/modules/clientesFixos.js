@@ -1,3 +1,26 @@
+// ===== FixedClientService (Sprint 014) =====
+window.FixedClientService = {
+  subscriptionRevenue(group){
+    try{
+      const p=parcelInfoForFixedClient(group[0]);
+      if(p.total) return Number(p.total||0)*Number(p.value||0);
+    }catch(e){}
+    return (group||[]).filter(fixedServiceIsPayment)
+      .reduce((t,a)=>t+Number(a.services?.price||0),0);
+  },
+  activeGroups(){
+    const groups={};
+    (cache.appointments||[])
+      .filter(a=>a.status==='agendado' && a.date>=todayISO() && !isClosureAppt(a))
+      .forEach(a=>{
+        const k=fixedClientGroupKey(a);
+        (groups[k]??=[]).push(a);
+      });
+    return Object.values(groups);
+  }
+};
+// ===== End FixedClientService =====
+
 function addDaysISO(date, days){ const d=new Date(date+"T12:00:00"); d.setDate(d.getDate()+Number(days||0)); return d.toISOString().slice(0,10); }
 function addMonthsISO(date, months){ const d=new Date(date+"T12:00:00"); d.setMonth(d.getMonth()+Number(months||0)); return d.toISOString().slice(0,10); }
 function recurringCountFor(frequency, periodWeeks){
@@ -93,15 +116,7 @@ function fixedServiceIsPayment(a){
   const n=String(a?.services?.name||'').toLowerCase();
   return n.includes('parcela mensal') || n.includes('parcela semanal') || n.includes('recebimento imediato') || n.includes('recebimento final') || /^Parcela\s+\d+\/\d+\s+assinatura/i.test(String(a?.client_name||''));
 }
-function fixedSubscriptionRevenueFromGroup(g){
-  try{
-    const p=parcelInfoForFixedClient(g[0]);
-    if(p.total) return Number(p.total||0)*Number(p.value||0);
-  }catch(e){}
-  // Se for um grupo de bloqueios de agenda, não soma atendimento como receita.
-  // Receita de cliente fixo vem somente de parcela mensal/recebimento.
-  return (g||[]).filter(fixedServiceIsPayment).reduce((t,a)=>t+Number(a.services?.price||0),0);
-}
+function fixedSubscriptionRevenueFromGroup(g){ return FixedClientService.subscriptionRevenue(g); }
 function updateRecurringPreview(){
   const value=Number(String(document.getElementById('rvalue')?.value||'0').replace(',','.'))||0;
   const months=Math.max(1,Math.min(24,Number(document.getElementById('rmonths')?.value||1)));
@@ -302,6 +317,7 @@ window.updateEditFixedSlots = () => {
   const t=document.getElementById('ef_time'); if(t) t.innerHTML=slotOptionsDuration(b,d,dur);
 };
 window.saveEditFixedClient = async (id) => {
+  let completedWrites=0;
   try{
     const group=fixedClientGroupByFirstId(id).sort((a,b)=>`${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
     if(!group.length) return toast('Cliente fixo não encontrado.');
@@ -317,8 +333,83 @@ window.saveEditFixedClient = async (id) => {
     const dur=Math.max(1,Number(document.getElementById('ef_dur')?.value||base.services?.duration||30));
     const payDate=document.getElementById('ef_paydate')?.value || start;
     if(!name || !phone || !barberId || !pack || !start || !time) return toast('Preencha nome, telefone, barbeiro, pacote, data e horário.');
-    const agendados=group.filter(a=>a.status==='agendado').sort((a,b)=>`${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    const now=Date.now();
+    const appointmentTimestamp=(date,value='00:00')=>{
+      const parsed=new Date(`${date}T${String(value||'00:00').slice(0,5)}:00`).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const isFutureRecord=a=>appointmentTimestamp(a?.date,a?.time)>now;
+    const agendados=group
+      .filter(a=>a.status==='agendado' && isFutureRecord(a))
+      .sort((a,b)=>`${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    if(!agendados.length) return toast('Este pacote não possui horários futuros ativos para editar.');
     const freqDays=guessFixedFrequencyDays(agendados);
+    const appointmentPlans=agendados.map((a,i)=>{
+      const d=new Date(start+'T12:00:00');
+      d.setDate(d.getDate()+i*freqDays);
+      return {appointment:a,date:d.toISOString().slice(0,10),time,duration:dur};
+    });
+    const invalidPlans=appointmentPlans.filter(p=>appointmentTimestamp(p.date,p.time)<=now);
+    if(invalidPlans.length){
+      alert(`Não foi possível salvar. Os seguintes horários não são futuros:\n\n${invalidPlans.map(p=>`${p.date} às ${p.time}`).join('\n')}`);
+      return;
+    }
+
+    const targetShopId=String(sameShopId() || barberById(barberId)?.shop_id || base?.shop_id || '').trim();
+    if(!targetShopId) return toast('Não foi possível identificar a barbearia para validar os conflitos.');
+    const packageIds=new Set(group.map(a=>String(a.id)));
+    const plannedDates=appointmentPlans.map(p=>p.date).sort();
+    const {data:otherAppointments,error:conflictLoadError}=await db.from('appointments')
+      .select('id,shop_id,barber_id,client_name,date,time,status,service_id,services(duration)')
+      .eq('shop_id',targetShopId)
+      .eq('barber_id',barberId)
+      .gte('date',plannedDates[0])
+      .lte('date',plannedDates[plannedDates.length-1]);
+    if(conflictLoadError) throw new Error(`Não foi possível validar conflitos: ${conflictLoadError.message}`);
+
+    const conflicts=[];
+    const addConflict=(plan,client)=>{
+      const key=`${plan.date}|${plan.time}|${client}`;
+      if(!conflicts.some(c=>c.key===key)) conflicts.push({key,date:plan.date,time:plan.time,client});
+    };
+    appointmentPlans.forEach((plan,index)=>{
+      const planStart=minutes(plan.time);
+      const planEnd=planStart+plan.duration;
+      (otherAppointments||[]).forEach(other=>{
+        if(packageIds.has(String(other.id)) || !statusBlocks(other.status) || other.date!==plan.date) return;
+        const otherStart=minutes(other.time);
+        const otherDuration=Math.max(1,Number(other.services?.duration || serviceById(other.service_id)?.duration || 30));
+        if(planStart<otherStart+otherDuration && otherStart<planEnd){
+          addConflict(plan,other.client_name || 'Cliente não identificado');
+        }
+      });
+      appointmentPlans.slice(index+1).forEach(otherPlan=>{
+        if(otherPlan.date!==plan.date) return;
+        const otherStart=minutes(otherPlan.time);
+        if(planStart<otherStart+otherPlan.duration && otherStart<planEnd){
+          addConflict(plan,name || 'Cliente do pacote');
+        }
+      });
+    });
+    if(conflicts.length){
+      alert(`Não foi possível salvar porque existem horários ocupados:\n\n${conflicts.map(c=>`${c.date} às ${c.time} — ${c.client}`).join('\n')}`);
+      return;
+    }
+
+    const parcels=(parcelInfoForFixedClient(base).parcels||[])
+      .filter(a=>a.status==='em_carteira' && isFutureRecord(a))
+      .sort((a,b)=>`${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+    const billingDay=new Date(payDate+'T12:00:00').getDate();
+    const parcelPlans=parcels.map((a,i)=>{
+      const chargeDate=addMonthsISO(payDate,i,billingDay);
+      return {appointment:a,date:chargeDate,time:'00:00'};
+    });
+    const invalidParcelPlans=parcelPlans.filter(p=>appointmentTimestamp(p.date,p.time)<=now);
+    if(invalidParcelPlans.length){
+      alert(`Não foi possível salvar. As seguintes cobranças não ficariam no futuro:\n\n${invalidParcelPlans.map(p=>`${p.date} às ${p.time}`).join('\n')}`);
+      return;
+    }
+
     const serviceIds=[...new Set(group.map(a=>a.service_id).filter(Boolean))];
     for(const sid of serviceIds){
       const related=group.filter(a=>a.service_id===sid);
@@ -326,29 +417,33 @@ window.saveEditFixedClient = async (id) => {
       const isParcel=related.some(isMonthlyParcel) || String(sample.services?.name||'').toLowerCase().includes('parcela');
       const isBlock=String(sample.services?.name||'').toLowerCase().includes('bloqueio');
       const price=isParcel ? parcelValue : (isBlock ? 0 : Number(sample.services?.price||0));
-      await db.from('services').update({name:isParcel?`${pack} • parcela mensal`:isBlock?`${pack} • bloqueio assinatura`:pack, price:Number(price||0), duration:isParcel?1:dur}).eq('id',sid);
-    }
-    for(let i=0;i<agendados.length;i++){
-      const a=agendados[i];
-      const d=new Date(start+'T12:00:00'); d.setDate(d.getDate()+i*freqDays);
-      const newDate=d.toISOString().slice(0,10);
-      const payload={client_name:name,client_phone:phone,barber_id:barberId,date:newDate,time};
-      const {error}=await db.from('appointments').update(payload).eq('id',a.id);
+      const {error}=await db.from('services').update({name:isParcel?`${pack} • parcela mensal`:isBlock?`${pack} • bloqueio assinatura`:pack, price:Number(price||0), duration:isParcel?1:dur}).eq('id',sid);
       if(error) throw new Error(error.message);
+      completedWrites++;
     }
-    const parcels=parcelInfoForFixedClient(base).parcels||[];
-    const billingDay=new Date(payDate+'T12:00:00').getDate();
-    for(let i=0;i<parcels.length;i++){
-      const a=parcels[i];
-      const chargeDate=addMonthsISO(payDate,i,billingDay);
-      const payload={client_name:`Parcela ${i+1}/${parcels.length} assinatura - ${name}`,client_phone:phone,barber_id:barberId,date:chargeDate,time:'00:00',reminder_date:chargeDate};
-      const {error}=await db.from('appointments').update(payload).eq('id',a.id);
+    for(const plan of appointmentPlans){
+      const payload={client_name:name,client_phone:phone,barber_id:barberId,date:plan.date,time:plan.time};
+      const {error}=await db.from('appointments').update(payload).eq('id',plan.appointment.id);
       if(error) throw new Error(error.message);
+      completedWrites++;
+    }
+    for(let i=0;i<parcelPlans.length;i++){
+      const plan=parcelPlans[i];
+      const parcelLabel=String(plan.appointment.client_name||'').match(/Parcela\s+(\d+)\/(\d+)\s+assinatura/i);
+      const parcelNumber=parcelLabel ? parcelLabel[1] : i+1;
+      const parcelTotal=parcelLabel ? parcelLabel[2] : parcelPlans.length;
+      const payload={client_name:`Parcela ${parcelNumber}/${parcelTotal} assinatura - ${name}`,client_phone:phone,barber_id:barberId,date:plan.date,time:plan.time,reminder_date:plan.date};
+      const {error}=await db.from('appointments').update(payload).eq('id',plan.appointment.id);
+      if(error) throw new Error(error.message);
+      completedWrites++;
     }
     modal.remove();
     toast('Cliente fixo atualizado com sucesso.');
-    await loadData(); renderApp();
-  }catch(err){ toast(err.message||'Erro ao editar cliente fixo'); }
+    await renderApp();
+  }catch(err){
+    const partialWarning=completedWrites ? ' Algumas alterações anteriores desta tentativa podem já ter sido gravadas.' : '';
+    toast((err.message||'Erro ao editar cliente fixo')+partialWarning);
+  }
 };
 function recurringPage(){
   const bid = cache.shopBarbers[0]?.id || me.id;
@@ -395,7 +490,17 @@ function recurringPage(){
     <label>Forma de recebimento<select id="rpay" onchange="toggleBillingDay()"><option value="monthly">Receber mensalmente</option><option value="weekly">Receber semanalmente</option><option value="start">Receber contrato inteiro agora</option><option value="end">Receber contrato inteiro no final</option></select></label>
     <label id="rbilldateBox">Data da primeira cobrança<input id="rbilldate" type="date" min="${todayISO()}" value="${addMonthsISO(firstDate,0,new Date(firstDate+'T12:00:00').getDate())}" placeholder=""></label>
     <button id="saveRecurringBtn" class="primary" onclick="createRecurringClient()">Salvar assinatura</button>
-  </div><div id="recurringPreview" class="subPreview"><b>Resumo automático:</b> informe valor, frequência e meses para ver o cálculo.</div><p class="muted">Regra corrigida: frequência cria horários; mensalidade cria parcelas. Exemplo: R$ 200 por 3 meses = R$ 600 total. Se escolher semanalmente, vira 12 parcelas de R$ 50. Os cortes semanais entram na agenda com R$0,00.</p></div><div class="card fixedClientsPanel"><h3>Próximos clientes fixos</h3><p class="muted">Agora cada cliente fixo aparece em uma única caixa. Clique na seta para abrir detalhes, cobrança, WhatsApp e cancelamento.</p>${crmSummary}<div class="row"><button class="danger" onclick="cleanupRecurringDuplicates()">Corrigir duplicados</button></div><div class="fixedClientList">${upcoming.map(fixedClientCardHtml).join('') || '<div class="empty">Nenhum cliente fixo criado ainda.</div>'}</div></div>`;
+  </div><div id="recurringPreview" class="subPreview"><b>Resumo automático:</b> informe valor, frequência e meses para ver o cálculo.</div><p class="muted">Regra corrigida: frequência cria horários; mensalidade cria parcelas. Exemplo: R$ 200 por 3 meses = R$ 600 total. Se escolher semanalmente, vira 12 parcelas de R$ 50. Os cortes semanais entram na agenda com R$0,00.</p></div><div class="card fixedClientsPanel"><h3>Próximos clientes fixos</h3><p class="muted">Agora cada cliente fixo aparece em uma única caixa. Clique na seta para abrir detalhes, cobrança, WhatsApp e cancelamento.</p>${crmSummary}<div class="row"><button class="danger" onclick="cleanupRecurringDuplicates()">Corrigir duplicados</button></div>
+<div class="card" style="margin:12px 0">
+<h4>⚠️ Possíveis Inconsistências</h4>
+<p class="muted">Auditoria rápida para localizar cadastros potencialmente duplicados.</p>
+<ul>
+<li>Assinaturas duplicadas para o mesmo telefone</li>
+<li>Mesmo telefone utilizado por múltiplos clientes</li>
+<li>Clientes com múltiplos telefones</li>
+</ul>
+</div>
+<div class="fixedClientList">${upcoming.map(fixedClientCardHtml).join('') || '<div class="empty">Nenhum cliente fixo criado ainda.</div>'}</div></div>`;
 }
 
 window.toggleRecurringBox = () => {
@@ -436,6 +541,50 @@ window.createRecurringClient = async () => {
     const barberId=document.getElementById('rab')?.value;
     const pack=(document.getElementById('rpack')?.value||'Assinatura').trim();
     const monthlyValue=Number(String(document.getElementById('rvalue')?.value||'0').replace(',','.'));
+    
+    // Sprint 017 - alerta de assinaturas existentes
+    const existingSubscriptions = (cache.appointments || []).filter(a=>{
+      if((a.client_phone||'').trim() !== phone) return false;
+      return ['agendado','em_carteira','em_andamento'].includes(a.status)
+        && subscriptionCodeFrom(a);
+    });
+
+    if(existingSubscriptions.length){
+      const codes=[...new Set(existingSubscriptions.map(subscriptionCodeFrom).filter(Boolean))];
+      const nextAppointment=existingSubscriptions
+        .filter(a=>a.status==='agendado')
+        .sort((a,b)=>`${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))[0];
+
+      const detectedClient =
+        existingSubscriptions.find(a => (a.client_name||'').trim())?.client_name ||
+        name ||
+        'Cliente não identificado';
+
+      const proceed = confirm(
+`⚠️ Atenção
+
+Encontramos ${codes.length} assinatura(s) para este cliente.
+
+Cliente: ${detectedClient}
+Telefone: ${phone}
+
+Assinaturas:
+${codes.join('\n')}
+
+Próximo atendimento:
+${nextAppointment ? `${nextAppointment.date} às ${nextAppointment.time}` : 'Não encontrado'}
+
+Deseja criar uma nova assinatura?`
+      );
+
+      if(!proceed){
+        window._creatingRecurring = false;
+        const btn=document.getElementById('saveRecurringBtn');
+        if(btn){ btn.disabled=false; btn.textContent='Salvar assinatura'; }
+        return;
+      }
+    }
+
     const dur=Math.max(1, Number(document.getElementById('rminutes')?.value || 30));
     const start=document.getElementById('rdt')?.value;
     const time=document.getElementById('rtm')?.value;
@@ -456,7 +605,7 @@ window.createRecurringClient = async () => {
 
     const makeService = async (nameSuffix, price, duration) => {
       const payload = {barber_id:barberId, name:nameSuffix, price:Number(price||0), duration:Number(duration||dur)};
-      const {data,error}=await db.from('services').insert(payload).select().single();
+      const {data,error}=await db.from('services').insert(shopScopedPayload(payload)).select().single();
       if(error) throw new Error(error.message);
       return data.id;
     };
@@ -508,7 +657,7 @@ window.createRecurringClient = async () => {
       const finalDate = rows.filter(r=>r.status==='agendado').slice(-1)[0]?.date || rows[0].date;
       rows.push({barber_id:barberId,service_id:serviceIdTotal,client_name:`Recebimento final assinatura ${contractCode} - ${name}`,client_phone:phone,date:finalDate,time:'00:00',status:'em_carteira',reminder_date:finalDate,reminder_days:0});
     }
-    const {error}=await db.from('appointments').insert(rows);
+    const {error}=await db.from('appointments').insert(rows.map(r=>shopScopedPayload(r)));
     if(error) return toast(error.message);
     const msgPay = payMode==='start' ? `contrato de ${money(totalContractValue)} lançado no faturamento agora` : payMode==='end' ? `contrato de ${money(totalContractValue)} ficará em carteira no final` : payMode==='weekly' ? `${contractMonths*4} parcela(s) semanal(is) de ${money(monthlyValue/4)} criada(s), totalizando ${money(totalContractValue)}` : `${contractMonths} parcela(s) mensal(is) de ${money(monthlyValue)} criada(s), totalizando ${money(totalContractValue)}`;
     toast(`${rows.filter(r=>r.status==='agendado').length} bloqueio(s) criado(s); ${msgPay}. ${skipped ? skipped+' pulado(s) por conflito.' : ''}`);
@@ -557,3 +706,81 @@ window.cleanupRecurringDuplicates = async () => {
   renderApp();
 };
 
+
+
+window.resolvePendingAppointments = async () => {
+  const pending=(cache.appointments||[]).filter(a=>
+    a.status==='agendado' && String(a.date||'') < todayISO()
+  );
+
+  if(!pending.length) return toast('Nenhuma pendência encontrada.');
+
+  if(!confirm(`Concluir ${pending.length} atendimento(s) pendente(s)?`)) return;
+
+  try{
+    const ids=pending.map(a=>a.id);
+    const {error}=await db.from('appointments')
+      .update({status:'concluido'})
+      .in('id',ids);
+
+    if(error) return toast(error.message);
+
+    toast(`${ids.length} atendimento(s) concluído(s).`);
+    await loadData();
+    renderApp();
+  }catch(err){
+    toast(err.message || 'Erro ao concluir pendências');
+  }
+};
+
+window.dailyClosingCheck = () => {
+  const today = todayISO();
+  const todayAppts = (cache.appointments||[]).filter(a=>a.date===today);
+  const completed = todayAppts.filter(a=>a.status==='concluido').length;
+  const pending = todayAppts.filter(a=>a.status==='agendado').length;
+
+  if(pending <= 0) return;
+
+  setTimeout(()=>{
+    const already=document.getElementById('dailyClosingModal');
+    if(already) return;
+
+    document.body.insertAdjacentHTML('beforeend',`
+      <div class="modalBack" id="dailyClosingModal">
+        <div class="modal">
+          <h2>⚠️ Fechamento do Dia</h2>
+          <p>Resumo operacional de hoje.</p>
+
+          <div class="grid2">
+            <div><b>${todayAppts.length}</b><br><small>Atendimentos hoje</small></div>
+            <div><b>${completed}</b><br><small>Concluídos</small></div>
+            <div><b>${pending}</b><br><small>Pendentes</small></div>
+          </div>
+
+          <div class="row" style="margin-top:12px">
+            <button class="primary" onclick="showPendingAppointments()">Resolver Agora</button>
+            <button onclick="dailyClosingModal.remove()">Lembrar Depois</button>
+          </div>
+        </div>
+      </div>`);
+  },1500);
+};
+
+try{ setTimeout(()=>window.dailyClosingCheck&&window.dailyClosingCheck(),2000);}catch(e){}
+
+
+window.exportAuditLog = () => {
+  const rows=(cache.appointments||[])
+    .slice()
+    .sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')))
+    .map(a=>[a.id,a.client_name,a.client_phone,a.date,a.time,a.status].join(';'))
+    .join('\n');
+
+  const blob=new Blob([rows],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='audit-log.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+};

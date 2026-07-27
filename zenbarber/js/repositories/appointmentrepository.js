@@ -1,0 +1,1 @@
+window.AppointmentRepository={all(){return cache.appointments||[];}};

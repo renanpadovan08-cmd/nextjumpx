@@ -1,0 +1,1 @@
+window.enableDemoMode=function(){localStorage.setItem('zb_demo','1');alert('Modo demonstração ativado');};

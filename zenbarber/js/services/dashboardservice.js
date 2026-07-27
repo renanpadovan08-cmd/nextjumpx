@@ -1,0 +1,1 @@
+window.DashboardService={metrics(month){return window.DashboardMetrics?DashboardMetrics.calculate(month):null;}};

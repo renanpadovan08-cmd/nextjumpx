@@ -82,12 +82,13 @@ function whatsappQuickButtons(a,opts={}){
   if(!a || isClosureAppt(a)) return '';
   const id=a.id;
   const compact=opts.compact?' miniBtn':'';
+  const cls=compact.trim()||'';
   return `<div class="whatsCommandBtns">
-    <a target="_blank" href="${whatsappActionLink(a,'confirm')}"><button class="whats${compact}">Confirmar</button></a>
-    <a target="_blank" href="${whatsappActionLink(a,'reschedule')}"><button class="gold${compact}">Reagendar</button></a>
-    <a target="_blank" href="${whatsappActionLink(a,'delay')}"><button class="${compact.trim()||''}">Atraso</button></a>
-    <a target="_blank" href="${whatsappActionLink(a,'charge')}"><button class="${compact.trim()||''}">Cobrar</button></a>
-    <button class="${compact.trim()||''}" onclick="copyWhatsMsg('${id}','confirm')">Copiar</button>
+    <button type="button" class="whats${compact}" onclick="event.stopPropagation(); window.open('${whatsappActionLink(a,'confirm')}','_blank')">Confirmar</button>
+    <button type="button" class="gold${compact}" onclick="event.stopPropagation(); window.open('${whatsappActionLink(a,'reschedule')}','_blank')">Reagendar</button>
+    <button type="button" class="${cls}" onclick="event.stopPropagation(); window.open('${whatsappActionLink(a,'delay')}','_blank')">Atraso</button>
+    <button type="button" class="${cls}" onclick="event.stopPropagation(); window.open('${whatsappActionLink(a,'charge')}','_blank')">Cobrar</button>
+    <button type="button" class="${cls}" onclick="event.stopPropagation(); copyWhatsMsg('${id}','confirm')">Copiar</button>
   </div>`;
 }
 window.copyWhatsMsg = (id,type='confirm') => {
@@ -100,6 +101,12 @@ window.copyWhatsMsg = (id,type='confirm') => {
 function statusClass(st,a){
   if(a?.date===todayISO() && a?.time && minutes(a.time)<(new Date().getHours()*60+new Date().getMinutes()) && st==='agendado') return 'late';
   return ({agendado:'pending',encaixe:'fitin',em_andamento:'confirmed',concluido:'paid',cancelado:'cancelled',faltou:'late',bloqueio:'blocked'}[st] || 'pending');
+}
+function paymentActionButtons(a, opts={}){
+  if(!a || isClosureAppt(a)) return '';
+  const mini = opts.mini ? ' miniBtn' : '';
+  if(a.status==='concluido') return `<button class="gold${mini}" onclick="editPayment('${a.id}')">Editar pagamento</button>`;
+  return `<button class="primary${mini}" onclick="finishAppt('${a.id}')">Concluir</button><button${mini?` class="${mini.trim()}"`:''} onclick="setStatus('${a.id}','faltou')">Faltou</button>`;
 }
 function periodOfTime(t){ const m=minutes(t); if(m<12*60) return '☀️ Manhã'; if(m<18*60) return '🌤️ Tarde'; return '🌙 Noite'; }
 function gapHtml(prev,a){
@@ -127,7 +134,7 @@ function timelineCard(a,prev){
   if(isClosureAppt(a)){
     return `${gapHtml(prev,a)}<div class="timelineItem apptItem blocked" data-search="${esc(searchText)}"><div class="timeRail"><strong>${esc(a.time||'')}</strong><i></i></div><div class="timelineCard"><div class="timelineMain"><div><b>${esc(a.client_name||'Agenda fechada')}</b><small>${end?`até ${end} • `:''}${esc(a.services?.name||'Bloqueio interno')}</small></div><span class="statusBadge blocked">Bloqueio</span></div><div class="quickActions"><button class="danger" onclick="cancelAppt('${a.id}')">Reabrir/cancelar</button></div></div></div>`;
   }
-  return `${gapHtml(prev,a)}<details class="timelineItem apptItem ${cls}" data-search="${esc(searchText)}"><summary><div class="timeRail"><strong>${esc(a.time||'')}</strong><i></i></div><div class="timelineCard"><div class="timelineMain"><div><b>${a.status==='encaixe'?'⚡ Cliente encaixe • ':''}${esc(a.client_name)}</b><small>${esc(a.services?.name||'Serviço')} • ${Number(a.services?.duration||30)} min</small><small>${esc(barberName(a.barber_id))}</small></div><span class="statusBadge ${cls}">${statusLabel(a.status)}</span></div><div class="timelineMeta"><span>${end?`até ${end}`:''}</span><span>${money(a.services?.price)}</span></div></div></summary><div class="timelineExpand"><p><b>WhatsApp:</b> ${esc(a.client_phone||'Não informado')}</p>${whatsappQuickButtons(a)}<div class="quickActions"><button onclick="editAppt('${a.id}')">Editar</button><button class="primary" onclick="finishAppt('${a.id}')">Concluir</button><button onclick="setStatus('${a.id}','faltou')">Faltou</button><button class="danger" onclick="cancelAppt('${a.id}')">Cancelar</button></div></div></details>`;
+  return `${gapHtml(prev,a)}<details class="timelineItem apptItem ${cls}" data-search="${esc(searchText)}"><summary><div class="timeRail"><strong>${esc(a.time||'')}</strong><i></i></div><div class="timelineCard"><div class="timelineMain"><div><b>${a.status==='encaixe'?'⚡ Cliente encaixe • ':''}${esc(a.client_name)}</b><small>${esc(a.services?.name||'Serviço')} • ${Number(a.services?.duration||30)} min</small><small>${esc(barberName(a.barber_id))}</small></div><span class="statusBadge ${cls}">${statusLabel(a.status)}</span></div><div class="timelineMeta"><span>${end?`até ${end}`:''}</span><span>${money(a.services?.price)}</span></div></div></summary><div class="timelineExpand"><p><b>WhatsApp:</b> ${esc(a.client_phone||'Não informado')}</p>${whatsappQuickButtons(a)}<div class="quickActions"><button onclick="editAppt('${a.id}')">Editar</button>${paymentActionButtons(a)}<button class="danger" onclick="cancelAppt('${a.id}')">Cancelar</button></div></div></details>`;
 }
 function groupedSearchText(items){
   return items.map(a=>[a.client_name,a.client_phone,barberName(a.barber_id),a.services?.name,a.date,a.time,a.status].filter(Boolean).join(' ')).join(' ').toLowerCase();
@@ -150,7 +157,7 @@ function appointmentMiniCard(a){
   const title=isBlock ? (a.client_name||'Agenda fechada') : `${a.status==='encaixe'?'⚡ Cliente encaixe • ':''}${a.client_name||'Cliente'}`;
   const subtitle=isBlock ? `${end?`até ${end} • `:''}${a.services?.name||'Bloqueio interno'}` : `${a.services?.name||'Serviço'} • ${Number(a.services?.duration||30)} min • até ${end}`;
   const dragAttrs = isBlock ? '' : ` draggable="true" ondragstart="agendaDragStart(event,'${a.id}')"`;
-  return `<details class="groupedApptCard apptItem ${isBlock?'blocked':cls}" data-search="${esc(groupedSearchText([a]))}"${dragAttrs}><summary><div class="groupedApptMain"><div><b>${esc(title)}</b><small>${esc(subtitle)}</small><small>💈 ${esc(barberName(a.barber_id))}${a.client_phone?` • ${esc(a.client_phone)}`:''}</small></div><span class="statusBadge ${isBlock?'blocked':cls}">${isBlock?'Bloqueio':statusLabel(a.status)}</span></div><div class="timelineMeta"><span>${money(a.services?.price)}</span></div></summary><div class="timelineExpand groupedExpand"><p><b>WhatsApp:</b> ${esc(a.client_phone||'Não informado')}</p>${isBlock?'':whatsappQuickButtons(a)}<div class="quickActions">${isBlock?'':`<button onclick="quickReschedule('${a.id}')">Remarcar</button><button onclick="editAppt('${a.id}')">Editar</button><button class="primary" onclick="finishAppt('${a.id}')">Concluir</button><button onclick="setStatus('${a.id}','faltou')">Faltou</button>`}<button class="danger" onclick="cancelAppt('${a.id}')">${isBlock?'Reabrir/cancelar':'Cancelar'}</button></div></div></details>`;
+  return `<details class="groupedApptCard apptItem ${isBlock?'blocked':cls}" data-search="${esc(groupedSearchText([a]))}"${dragAttrs}><summary><div class="groupedApptMain"><div><b>${esc(title)}</b><small>${esc(subtitle)}</small><small>💈 ${esc(barberName(a.barber_id))}${a.client_phone?` • ${esc(a.client_phone)}`:''}</small></div><span class="statusBadge ${isBlock?'blocked':cls}">${isBlock?'Bloqueio':statusLabel(a.status)}</span></div><div class="timelineMeta"><span>${money(a.services?.price)}</span></div></summary><div class="timelineExpand groupedExpand"><p><b>WhatsApp:</b> ${esc(a.client_phone||'Não informado')}</p>${isBlock?'':whatsappQuickButtons(a)}<div class="quickActions">${isBlock?'':`<button onclick="quickReschedule('${a.id}')">Remarcar</button><button onclick="editAppt('${a.id}')">Editar</button>${paymentActionButtons(a)}`}<button class="danger" onclick="cancelAppt('${a.id}')">${isBlock?'Reabrir/cancelar':'Cancelar'}</button></div></div></details>`;
 }
 function timeGroupCard(items,prevGroup){
   const time=items[0]?.time || '';
@@ -183,7 +190,7 @@ function timelineAgenda(date){
   return `<div class="timeline cleanTimeline groupedTimeline">${html}</div>`;
 }
 function lateNextRow(a){
-  return `<div class="lateNextRow"><div><span>Passou sem confirmação</span><b>${esc(a.time||'')} • ${esc(a.client_name||'Cliente')}</b><small>${esc(a.services?.name||'Serviço')} • ${timeUntilText(a)}</small></div><div class="lateNextActions"><a target="_blank" href="${whatsappActionLink(a,'confirm')}"><button class="whats">Confirmar</button></a><button onclick="setStatus('${a.id}','em_andamento')">Iniciar</button><button class="primary" onclick="finishAppt('${a.id}')">Concluir</button><button class="danger" onclick="setStatus('${a.id}','faltou')">Faltou</button></div></div>`;
+  return `<div class="lateNextRow"><div><span>Passou sem confirmação</span><b>${esc(a.time||'')} • ${esc(a.client_name||'Cliente')}</b><small>${esc(a.services?.name||'Serviço')} • ${timeUntilText(a)}</small></div><div class="lateNextActions"><a target="_blank" href="${whatsappActionLink(a,'confirm')}"><button class="whats">Confirmar</button></a><button class="primary" onclick="finishAppt('${a.id}')">Concluir</button><button class="danger" onclick="setStatus('${a.id}','faltou')">Faltou</button></div></div>`;
 }
 function nextClientCard(date){
   const a=nextClientFor(date);
@@ -191,7 +198,7 @@ function nextClientCard(date){
   const lateHtml = late.length ? `<div class="lateNextStack"><div class="lateNextTitle">⚠️ Aguardando ação (${late.length})</div>${late.map(lateNextRow).join('')}</div>` : '';
   const main = !a
     ? `<div class="nextClient emptyNext"><span>Próximo cliente</span><h3>Nenhum cliente agendado</h3><p class="muted">Dia livre até agora.</p></div>`
-    : `<div class="nextClient"><div><span>Próximo cliente</span><h3>${esc(a.time||'')} • ${a.status==='encaixe'?'⚡ Cliente encaixe • ':''}${esc(a.client_name)}</h3><p>${esc(a.services?.name||'Serviço')} • ${Number(a.services?.duration||30)} min • ${timeUntilText(a)}</p></div><div class="nextActions"><a target="_blank" href="${whatsappActionLink(a,'confirm')}"><button class="whats">Confirmar WhatsApp</button></a><button onclick="setStatus('${a.id}','em_andamento')">Iniciar</button><button class="primary" onclick="finishAppt('${a.id}')">Concluir</button></div></div>`;
+    : `<div class="nextClient"><div><span>Próximo cliente</span><h3>${esc(a.time||'')} • ${a.status==='encaixe'?'⚡ Cliente encaixe • ':''}${esc(a.client_name)}</h3><p>${esc(a.services?.name||'Serviço')} • ${Number(a.services?.duration||30)} min • ${timeUntilText(a)}</p></div><div class="nextActions"><a target="_blank" href="${whatsappActionLink(a,'confirm')}"><button class="whats">Confirmar WhatsApp</button></a><button class="primary" onclick="finishAppt('${a.id}')">Concluir</button></div></div>`;
   return `<div class="nextClientPanel">${main}${lateHtml}</div>`;
 }
 
@@ -214,7 +221,7 @@ function barberBoard(date){
   const html=barbers.map(b=>{
     const items=agendaDayAppts(date).filter(a=>a.barber_id===b.id && !isClosureAppt(a));
     const load=barberLoadForDay(b.id,date);
-    const cards=items.length ? items.map(a=>`<div class="barberBoardAppt apptItem ${statusClass(a.status,a)}" data-search="${esc(groupedSearchText([a]))}" draggable="true" ondragstart="agendaDragStart(event,'${a.id}')"><b>${esc(a.time||'')} • ${esc(a.client_name||'Cliente')}</b><small>${esc(a.services?.name||'Serviço')} • ${Number(a.services?.duration||30)} min</small><small>${statusLabel(a.status)} • ${money(a.services?.price)}</small><div class="boardActions"><button onclick="quickReschedule('${a.id}')">Remarcar</button><button onclick="editAppt('${a.id}')">Editar</button></div></div>`).join('') : '<div class="barberBoardEmpty">Sem clientes neste dia</div>';
+    const cards=items.length ? items.map(a=>`<div class="barberBoardAppt apptItem ${statusClass(a.status,a)}" data-search="${esc(groupedSearchText([a]))}" draggable="true" ondragstart="agendaDragStart(event,'${a.id}')"><b>${esc(a.time||'')} • ${esc(a.client_name||'Cliente')}</b><small>${esc(a.services?.name||'Serviço')} • ${Number(a.services?.duration||30)} min</small><small>${statusLabel(a.status)} • ${money(a.services?.price)}</small><div class="boardActions"><button onclick="quickReschedule('${a.id}')">Remarcar</button><button onclick="editAppt('${a.id}')">Editar</button>${a.status==='concluido'?`<button class="gold" onclick="editPayment('${a.id}')">Editar pagamento</button>`:''}</div></div>`).join('') : '<div class="barberBoardEmpty">Sem clientes neste dia</div>';
     return `<div class="barberBoardCol"><div class="barberBoardHead"><div><b>${esc(b.name||'Barbeiro')}</b><small>${items.length} cliente(s) • ${load}% ocupado</small></div><i><em style="width:${load}%"></em></i></div>${cards}${freeSlotsMini(b.id,date)}</div>`;
   }).join('');
   return `<details class="card barberBoardPanel"><summary><div><h3>Visão por barbeiro</h3><p class="muted">Arraste um cliente para um horário livre ou use Remarcar para trocar horário/barbeiro com segurança.</p></div><span>abrir/fechar</span></summary><div class="barberBoardGrid">${html}</div></details>`;
@@ -293,6 +300,58 @@ window.saveQuickReschedule = async id => {
   toast('Agendamento remarcado.');
   renderApp();
 };
+// Preserva o formulário de agendamento interno durante atualizações da agenda.
+function agendaDraftKey(){
+  const shop = (typeof sameShopName==='function' && sameShopName()) || me?.shop_name || me?.login || 'zenbarber';
+  return 'zenbarber_agenda_draft_' + String(shop).toLowerCase().replace(/[^a-z0-9_-]+/g,'_');
+}
+function readAgendaDraft(){
+  try{ return JSON.parse(sessionStorage.getItem(agendaDraftKey()) || 'null'); }catch(e){ return null; }
+}
+function captureAgendaDraft(){
+  if(typeof page==='undefined' || page!=='appointments') return;
+  const ids=['cn','cp','ab','sv','dt','tm'];
+  const data={};
+  let found=false;
+  ids.forEach(id=>{ const el=document.getElementById(id); if(el){ data[id]=el.value; found=true; } });
+  if(!found) return;
+  data.dirty = !!(data.cn || data.cp || window.__zenAgendaDraftDirty);
+  data.savedAt = Date.now();
+  sessionStorage.setItem(agendaDraftKey(), JSON.stringify(data));
+}
+function markAgendaDraftDirty(){
+  window.__zenAgendaDraftDirty=true;
+  captureAgendaDraft();
+}
+function clearAgendaDraft(){
+  window.__zenAgendaDraftDirty=false;
+  sessionStorage.removeItem(agendaDraftKey());
+}
+function restoreAgendaDraft(){
+  if(typeof page==='undefined' || page!=='appointments') return;
+  const d=readAgendaDraft();
+  if(!d) return;
+  const set=(id,val)=>{ const el=document.getElementById(id); if(el && val!==undefined && val!==null) el.value=val; };
+  set('cn',d.cn); set('cp',d.cp); set('ab',d.ab);
+  if(document.getElementById('ab')) updateManualServices();
+  set('sv',d.sv); set('dt',d.dt);
+  if(document.getElementById('dt')) updateManualSlots();
+  set('tm',d.tm);
+  window.__zenAgendaDraftDirty=!!d.dirty;
+}
+function agendaFormIsBeingEdited(){
+  if(typeof page==='undefined' || page!=='appointments') return false;
+  const active=document.activeElement;
+  const inForm=active && ['cn','cp','ab','sv','dt','tm'].includes(active.id);
+  const d=readAgendaDraft();
+  return !!(inForm || window.__zenAgendaDraftDirty || d?.dirty);
+}
+window.captureAgendaDraft=captureAgendaDraft;
+window.restoreAgendaDraft=restoreAgendaDraft;
+window.markAgendaDraftDirty=markAgendaDraftDirty;
+window.clearAgendaDraft=clearAgendaDraft;
+window.agendaFormIsBeingEdited=agendaFormIsBeingEdited;
+
 function appointments(){
   if(!agendaDate) agendaDate=todayISO();
   const bid = cache.shopBarbers[0]?.id || me.id; const sid = publicServicesForBarber(bid)[0]?.id || "";
@@ -307,7 +366,7 @@ function appointments(){
   ${agendaKpis(agendaDate)}
   ${nextClientCard(agendaDate)}
   ${barberBoard(agendaDate)}
-  <div class="card"><h3>Novo agendamento interno</h3><div class="grid"><input id="cn" placeholder="Nome do cliente"><input id="cp" placeholder="Telefone"><select id="ab" onchange="updateManualServices()">${barberOptions(bid)}</select><select id="sv" onchange="updateManualSlots()">${serviceOptions(bid,sid)}</select><input id="dt" type="date" value="${agendaDate}" onchange="agendaDate=this.value||agendaDate;updateManualSlots();renderApp()"><select id="tm">${slotOptionsManual(bid,agendaDate,sid)}</select><button class="primary" onclick="addAppt()">Agendar</button><button class="gold" onclick="addFitIn()">Encaixe</button></div></div>
+  <div class="card"><h3>Novo agendamento interno</h3><div class="grid"><input id="cn" placeholder="Nome do cliente" oninput="markAgendaDraftDirty()"><input id="cp" placeholder="Telefone" oninput="markAgendaDraftDirty()"><select id="ab" onchange="markAgendaDraftDirty();updateManualServices()">${barberOptions(bid)}</select><select id="sv" onchange="markAgendaDraftDirty();updateManualSlots()">${serviceOptions(bid,sid)}</select><input id="dt" type="date" value="${agendaDate}" onchange="markAgendaDraftDirty();agendaDate=this.value||agendaDate;updateManualSlots();captureAgendaDraft()"><select id="tm" onchange="markAgendaDraftDirty()">${slotOptionsManual(bid,agendaDate,sid)}</select><button class="primary" onclick="addAppt()">Agendar</button><button class="gold" onclick="addFitIn()">Encaixe</button></div></div>
   ${pastSettleBanner}
   <div class="card agendaTimelineCard"><div class="agendaHeader"><div><h3>Timeline da barbearia</h3><p class="muted">Pesquise por nome, WhatsApp, barbeiro, serviço, data ou horário.</p></div><button class="dailyReminderBtn" onclick="dailyReminder()">🔔 Lembrete diário <span>${todayCount}</span></button></div><input id="apptSearch" class="searchInput" placeholder="Pesquisar agendamento. Ex: Eduardo" oninput="filterAppointments()">${timelineAgenda(agendaDate)}</div>`;
 }
@@ -341,20 +400,20 @@ window.updateManualSlots = () => { if(!dt.value) dt.value=todayISO(); tm.innerHT
 window.addAppt = async () => {
   if(!cn.value || !sv.value || !dt.value || !tm.value) return toast("Preencha os dados");
   if(await hasConflict(ab.value,dt.value,tm.value,sv.value)) return toast("Esse horário sobrepõe outro agendamento. Escolha outro horário.");
-  const {error}=await db.from("appointments").insert({barber_id:ab.value,service_id:sv.value,client_name:cn.value,client_phone:cp.value,date:dt.value,time:tm.value,status:"agendado"});
-  if(error) toast(error.message); else renderApp();
+  const {error}=await db.from("appointments").insert(shopScopedPayload({barber_id:ab.value,service_id:sv.value,client_name:cn.value,client_phone:cp.value,date:dt.value,time:tm.value,status:"agendado"}));
+  if(error) toast(error.message); else { clearAgendaDraft(); renderApp(); }
 };
 window.addFitIn = async () => {
   if(!cn.value || !sv.value || !dt.value || !tm.value) return toast("Preencha os dados");
   if(isPastDateTime(dt.value,tm.value)) return toast("Não permite encaixe no passado");
-  const {error}=await db.from("appointments").insert({barber_id:ab.value,service_id:sv.value,client_name:cn.value.trim(),client_phone:cp.value.trim(),date:dt.value,time:tm.value,status:"encaixe"});
-  if(error) toast(error.message); else { toast("Encaixe agendado e identificado na agenda."); renderApp(); }
+  const {error}=await db.from("appointments").insert(shopScopedPayload({barber_id:ab.value,service_id:sv.value,client_name:cn.value.trim(),client_phone:cp.value.trim(),date:dt.value,time:tm.value,status:"encaixe"}));
+  if(error) toast(error.message); else { clearAgendaDraft(); toast("Encaixe agendado e identificado na agenda."); renderApp(); }
 };
 function barberName(id){ return cache.shopBarbers.find(b=>b.id===id)?.name || "Barbeiro"; }
 function listAppts(arr){
   return arr.map(a=>{
     const searchText = [a.client_name, a.client_phone, barberName(a.barber_id), a.services?.name, a.date, a.time, a.status].filter(Boolean).join(' ').toLowerCase();
-    return `<div class="item apptItem" data-search="${esc(searchText)}"><div><strong>${esc(a.client_name)} • ${esc(barberName(a.barber_id))}</strong><small>${apptWhenHtml(a)} • ${esc(a.services?.name||'Serviço')} • ${money(a.services?.price)} • ${esc(a.status)}</small><br><small>${esc(a.client_phone||'')}</small></div><div class="row"><a target="_blank" href="${wa(a.client_phone,`Olá ${a.client_name}, passando sobre seu agendamento na ${sameShopName()} em ${formatDateFullBR(a.date)} às ${a.time}.`)}"><button class="whats">WhatsApp</button></a><button onclick="editAppt('${a.id}')">Editar</button><button class="primary" onclick="finishAppt('${a.id}')">Concluir</button><button onclick="setStatus('${a.id}','faltou')">Faltou</button><button class="danger" onclick="cancelAppt('${a.id}')">Cancelar</button></div></div>`;
+    return `<div class="item apptItem" data-search="${esc(searchText)}"><div><strong>${esc(a.client_name)} • ${esc(barberName(a.barber_id))}</strong><small>${apptWhenHtml(a)} • ${esc(a.services?.name||'Serviço')} • ${money(a.services?.price)} • ${esc(a.status)}</small><br><small>${esc(a.client_phone||'')}</small></div><div class="row"><a target="_blank" href="${wa(a.client_phone,`Olá ${a.client_name}, passando sobre seu agendamento na ${sameShopName()} em ${formatDateFullBR(a.date)} às ${a.time}.`)}"><button class="whats">WhatsApp</button></a><button onclick="editAppt('${a.id}')">Editar</button>${paymentActionButtons(a)}<button class="danger" onclick="cancelAppt('${a.id}')">Cancelar</button></div></div>`;
   }).join("") || '<div class="empty">Nada por aqui.</div>';
 }
 window.filterAppointments = () => {
@@ -495,8 +554,8 @@ window.markPaid = async id => { await db.from("appointments").update({status:"co
 window.receiveWithDiscount = async id => {
   const a = cache.appointments.find(x=>x.id===id);
   if(!a) return toast('Atendimento/cobrança não encontrado.');
-  const original = Number(a.services?.price||0);
-  if(original<=0) return toast('Este lançamento não possui valor original cadastrado.');
+  const original = appointmentPrice(a);
+  if(original<=0) return toast('Não encontrei o valor original deste lançamento. Abra Serviços e confira se o serviço ainda existe ou use Corrigir valor na carteira.');
   const typed = prompt(`Valor original: ${money(original)}\nInforme o VALOR A RECEBER final.\n\nExemplos:\n- Cliente ganhou desconto: digite 40\n- Cliente levou produto extra: digite 50`, String(original).replace('.',','));
   if(typed===null) return;
   const finalValue = Number(String(typed).replace('R$','').replace(/\s/g,'').replace(',','.'));
@@ -506,14 +565,14 @@ window.receiveWithDiscount = async id => {
   if(!confirm(`Confirmar valor a receber?\n\nValor original: ${money(original)}\nValor final: ${money(finalValue)}\nDiferença: ${movementLabel}\n\nÉ este valor final que entrará no faturamento.`)) return;
   let newServiceId = a.service_id;
   if(finalValue!==original){
-    const baseName = String(a.services?.name||'Serviço').split('•')[0].trim() || 'Serviço';
-    const dur = Number(a.services?.duration||30);
+    const baseName = String(appointmentServiceName(a)||'Serviço').split('•')[0].trim() || 'Serviço';
+    const dur = Number(appointmentService(a)?.duration||30);
     // IMPORTANTE: não alteramos nem recriamos o serviço visível do catálogo.
     // Criamos um serviço técnico oculto apenas para este atendimento, com o preço final recebido.
     // O filtro publicServicesForBarber/isInternalSubscriptionService esconde "ajuste financeiro"
     // da tela Serviços e do link público, evitando poluir a agenda do cliente.
     const name = `${baseName} • ajuste financeiro • valor a receber`;
-    const {data,error} = await db.from('services').insert({barber_id:a.barber_id,name,price:finalValue,duration:dur}).select().single();
+    const {data,error} = await db.from('services').insert(shopScopedPayload({barber_id:a.barber_id,name,price:finalValue,duration:dur})).select().single();
     if(error) return toast(error.message);
     newServiceId = data.id;
   }
@@ -522,6 +581,12 @@ window.receiveWithDiscount = async id => {
   const m=document.getElementById('modal'); if(m)m.remove();
   toast(`Recebido: ${money(finalValue)} (${movementLabel}).`);
   renderApp();
+};
+window.editPayment = async id => {
+  const a = cache.appointments.find(x=>x.id===id);
+  if(!a) return toast('Atendimento não encontrado.');
+  if(a.status!=='concluido') return receiveWithDiscount(id);
+  return receiveWithDiscount(id);
 };
 window.bonifyWallet = async id => {
   if(!confirm('Bonificar/isentar esta cobrança? Ela sairá da carteira e NÃO entrará no faturamento.')) return;
@@ -561,7 +626,11 @@ window.cancelWalletCharge = async id => {
 
 if(!window.__zenAgendaAutoRefresh){
   window.__zenAgendaAutoRefresh = setInterval(()=>{
-    if(typeof page!=='undefined' && page==='appointments' && typeof renderApp==='function') renderApp();
+    if(typeof page!=='undefined' && page==='appointments' && typeof renderApp==='function'){
+      // Nunca recria a tela enquanto o barbeiro estiver preenchendo o formulário.
+      if(typeof agendaFormIsBeingEdited==='function' && agendaFormIsBeingEdited()) return;
+      renderApp();
+    }
   },60000);
 }
 

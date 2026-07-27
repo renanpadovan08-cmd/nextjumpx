@@ -1,3 +1,12 @@
+// ===== BusinessService (Sprint 015) =====
+window.BusinessService={
+ metrics(){return businessMetrics();},
+ rankings(){return clientRankings();},
+ risks(){return riskClients();},
+ score(){return proScore(businessMetrics());}
+};
+// ===== End BusinessService =====
+
 // MÓDULO MEU NEGÓCIO — transforma cada barbeiro em microempreendedor dentro do ZenBarber.
 // Usa dados existentes de Supabase: barbers, services e appointments. Metas ficam em barber_business_goals.
 
@@ -217,9 +226,9 @@ function meuNegocioPage(options={}){
   const attendancePct = goal.attendance_goal ? Math.round((m.doneMonth.length/Number(goal.attendance_goal))*100) : 0;
   const projectedRevenue = Math.round((m.monthRevenue/Math.max(1,currentDayOfMonth())) * daysInMonthKey(monthKey(todayISO())));
   const projectedCommission = Math.round((m.commission/Math.max(1,currentDayOfMonth())) * daysInMonthKey(monthKey(todayISO())));
-  const vip = clientRankings();
-  const risk = riskClients();
-  const score = proScore(m);
+  const vip = BusinessService.rankings();
+  const risk = BusinessService.risks();
+  const score = BusinessService.score();
   const selected = selectedBusinessBarberId();
   const goalTargetOptions = isBarberOnlyRole() ? '' : `<label>Meta para<select id="businessGoalBarber">${(cache.shopBarbers||[]).map(b=>`<option value="${esc(b.id)}" ${selected===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}</select></label>`;
   const ranking = internalRanking(m);

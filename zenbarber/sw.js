@@ -1,26 +1,27 @@
-const CACHE_NAME = 'zenbarber-monorepo-v3';
+const CACHE_NAME = 'zenbarber-loading-final-20260714';
 const APP_SHELL = [
-  './',
-  'index.html',
-  'css/style.css',
-  'js/core.js',
-  'js/vendor/bcrypt.min.js',
-  'js/bootstrap.js',
-  'js/modules/auth.js',
-  'js/modules/dashboard.js',
-  'js/modules/components.js',
-  'js/modules/cadastros.js',
-  'js/modules/agenda.js',
-  'js/modules/clientesFixos.js',
-  'js/modules/relatorios.js',
-  'js/modules/admin.js',
-  'js/modules/meuNegocio.js',
-  'js/modules/agendamentoPublico.js',
-  'manifest.json',
-  'icon-192.png',
-  'icon-512.png',
-  'icon-maskable-512.png'
-].map((path) => new URL(path, self.registration.scope).toString());
+  '/',
+  '/index.html',
+  '/css/style.css',
+  '/js/core.js',
+  '/js/bootstrap.js',
+  '/js/modules/auth.js',
+  '/js/modules/dashboard.js',
+  '/js/modules/components.js',
+  '/js/modules/cadastros.js',
+  '/js/modules/agenda.js',
+  '/js/modules/caixa.js',
+  '/js/modules/clientesFixos.js',
+  '/js/modules/relatorios.js',
+  '/js/modules/supportChat.js',
+  '/js/modules/admin.js',
+  '/js/modules/meuNegocio.js',
+  '/js/modules/agendamentoPublico.js',
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-maskable-512.png'
+];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -52,7 +53,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return response;
         })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match(APP_SHELL[1])))
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('/index.html')))
     );
     return;
   }

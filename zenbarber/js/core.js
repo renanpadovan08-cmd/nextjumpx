@@ -1,55 +1,90 @@
-// Configuração segura para GitHub/auditoria.
-// Para rodar localmente, copie js/config.example.js para js/config.js e preencha os valores reais.
-const ZENBARBER_CONFIG = window.ZENBARBER_CONFIG || {};
-const SUPABASE_URL = ZENBARBER_CONFIG.SUPABASE_URL || "COLE_SUA_SUPABASE_URL_AQUI";
-const SUPABASE_KEY = ZENBARBER_CONFIG.SUPABASE_KEY || "COLE_SUA_SUPABASE_ANON_KEY_AQUI";
+
+// ZenLoader global: feedback visual durante login, troca de abas e consultas demoradas.
+(function initZenGlobalLoader(){
+  const activeTokens = new Set();
+  const delayTimers = new Map();
+  let visibleSince = 0;
+  let hideTimer = null;
+
+  function elements(){
+    return {
+      overlay: document.getElementById('zenGlobalLoader'),
+      message: document.getElementById('zenLoaderMessage')
+    };
+  }
+
+  window.showZenLoader = function(message, options){
+    const opts = options || {};
+    const token = Symbol('zen-loader');
+    activeTokens.add(token);
+    const delay = Number.isFinite(opts.delay) ? opts.delay : 220;
+    clearTimeout(hideTimer);
+    const timer = setTimeout(function(){
+      delayTimers.delete(token);
+      const {overlay, message: messageEl} = elements();
+      if(!overlay || !activeTokens.has(token)) return;
+      if(messageEl) messageEl.textContent = String(message || 'Carregando');
+      overlay.hidden = false;
+      requestAnimationFrame(function(){ overlay.classList.add('isVisible'); });
+      document.body.classList.add('zenIsLoading');
+      if(!visibleSince) visibleSince = Date.now();
+    }, Math.max(0, delay));
+    delayTimers.set(token, timer);
+    return token;
+  };
+
+  window.hideZenLoader = function(token, options){
+    if(!activeTokens.has(token)) return;
+    activeTokens.delete(token);
+    const tokenTimer = delayTimers.get(token);
+    if(tokenTimer) clearTimeout(tokenTimer);
+    delayTimers.delete(token);
+    if(activeTokens.size > 0) return;
+    const opts = options || {};
+    const {overlay} = elements();
+    if(!overlay) return;
+    const minVisible = Number.isFinite(opts.minVisible) ? opts.minVisible : 260;
+    const elapsed = visibleSince ? Date.now() - visibleSince : minVisible;
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(function(){
+      if(activeTokens.size > 0) return;
+      overlay.classList.remove('isVisible');
+      document.body.classList.remove('zenIsLoading');
+      setTimeout(function(){ if(activeTokens.size === 0) overlay.hidden = true; }, 180);
+      visibleSince = 0;
+    }, Math.max(0, minVisible - elapsed));
+  };
+
+  window.forceHideZenLoader = function(){
+    activeTokens.clear();
+    for(const timer of delayTimers.values()) clearTimeout(timer);
+    delayTimers.clear();
+    clearTimeout(hideTimer);
+    const {overlay} = elements();
+    if(overlay){ overlay.classList.remove('isVisible'); overlay.hidden = true; }
+    document.body.classList.remove('zenIsLoading');
+    visibleSince = 0;
+  };
+
+  window.withZenLoader = async function(message, task, options){
+    const token = window.showZenLoader(message, options);
+    try { return await task(); }
+    finally { window.hideZenLoader(token, options); }
+  };
+})();
+const SUPABASE_URL = "https://onutvsdoqnvpmovbbthr.supabase.co";
+const SUPABASE_KEY = "sb_publishable_dqCpc5nWa_3pIiABuQsiuw_Jm7qxBZH";
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-const BARBER_SAFE_COLUMNS = "id,name,login,phone,shop_name,role,photo_url,background_url,work_start,work_end,off_days,commission_rate,access_status,expires_at,created_at,activation_note,must_change_password";
-const BARBER_PUBLIC_COLUMNS = "id,name,phone,shop_name,photo_url,background_url,work_start,work_end,off_days,commission_rate,access_status,created_at,activation_note";
+const BARBER_SAFE_COLUMNS = "id,shop_id,name,login,phone,shop_name,role,photo_url,background_url,work_start,work_end,off_days,commission_rate,access_status,expires_at,created_at,activation_note,must_change_password,accepted_terms,accepted_terms_at,accepted_terms_version";
+const BARBER_PUBLIC_COLUMNS = "id,shop_id,name,phone,shop_name,photo_url,background_url,work_start,work_end,off_days,commission_rate,access_status,created_at,activation_note";
 // Colunas administrativas sem password: a senha nunca deve ser exibida/listada no painel.
-const ADMIN_BARBER_COLUMNS = "id,name,login,phone,shop_name,role,photo_url,background_url,work_start,work_end,off_days,commission_rate,access_status,expires_at,created_at,activation_note,must_change_password";
+const ADMIN_BARBER_COLUMNS = "id,shop_id,name,login,phone,shop_name,role,photo_url,background_url,work_start,work_end,off_days,commission_rate,access_status,expires_at,created_at,activation_note,must_change_password,accepted_terms,accepted_terms_at,accepted_terms_version";
 
 
 // Segurança etapa 2: senha com hash no navegador (compatível com app estático).
 // Observação: o ideal definitivo é Supabase Auth ou backend/Edge Function com bcrypt/argon2.
 // Este hotfix remove senha aberta do fluxo e migra senhas antigas no primeiro login.
 const PASSWORD_HASH_PREFIX = "zb_sha256_v1$";
-const BCRYPT_SCRIPT_SRC = "js/vendor/bcrypt.min.js?v=2.4.3";
-let bcryptLoaderPromise = null;
-
-function browserBcrypt(){
-  return window.bcrypt || window.dcodeIO?.bcrypt || null;
-}
-
-function loadBrowserBcrypt(){
-  const loaded = browserBcrypt();
-  if(loaded) return Promise.resolve(loaded);
-  if(bcryptLoaderPromise) return bcryptLoaderPromise;
-
-  bcryptLoaderPromise = new Promise((resolve,reject)=>{
-    const existing = document.querySelector(`script[src="${BCRYPT_SCRIPT_SRC}"]`);
-    const script = existing || document.createElement("script");
-    const finish = ()=>{
-      const bcryptApi = browserBcrypt();
-      if(bcryptApi) resolve(bcryptApi);
-      else reject(new Error("A biblioteca BCrypt foi carregada, mas não ficou disponível."));
-    };
-
-    script.addEventListener("load",finish,{once:true});
-    script.addEventListener("error",()=>reject(new Error("Não foi possível carregar a biblioteca BCrypt.")),{once:true});
-    if(!existing){
-      script.src = BCRYPT_SCRIPT_SRC;
-      script.async = true;
-      document.head.appendChild(script);
-    }
-  }).catch(error=>{
-    bcryptLoaderPromise = null;
-    throw error;
-  });
-
-  return bcryptLoaderPromise;
-}
-
 async function sha256Hex(text){
   const data = new TextEncoder().encode(String(text));
   const buf = await crypto.subtle.digest("SHA-256", data);
@@ -82,34 +117,161 @@ async function migrateLegacyPasswordIfNeeded(user, plainPassword){
 }
 async function verifyBarberPassword(user, plainPassword){
   if(!user) return false;
-  const passwordHash = String(user.password_hash||"");
-  if(passwordHash.startsWith("$2")){
-    try{
-      const bcryptApi = await loadBrowserBcrypt();
-      return await bcryptApi.compare(plainPassword,passwordHash);
-    }catch(e){
-      console.error("Erro ao verificar BCrypt:",e);
-      return false;
-    }
-  }
-  if(passwordHash.startsWith(PASSWORD_HASH_PREFIX)){
+  if(user.password_hash){
     const expected = await makePasswordHash(user.login, plainPassword);
-    return passwordHash === expected;
+    return user.password_hash === expected;
   }
-  // Só usa a senha legada quando não existe hash. Um hash desconhecido nunca
-  // deve cair na comparação em texto puro.
-  if(passwordHash) return false;
   return String(user.password||"") === String(plainPassword||"");
 }
 
-// Segurança etapa 3: o acesso Admin deve existir no banco com role admin_master/admin.
-// Não use senha fixa no JavaScript, porque todo front-end pode ser inspecionado no navegador.
+// Segurança etapa 4: acesso Admin fixo removido do JavaScript.
+// O Admin deve existir no banco em public.barbers com role admin_master/admin e password_hash.
+// Nunca coloque senha fixa no front-end, porque qualquer usuário pode inspecionar o código no navegador.
 const ADMIN_LOGIN = "";
 const ADMIN_PASS = "";
 // Configure estes números se precisar trocar depois. Use DDD + número.
-const ACTIVATION_WHATSAPP = ZENBARBER_CONFIG.ACTIVATION_WHATSAPP || "5500000000000";
-const ACTIVATION_WHATSAPP_2 = ZENBARBER_CONFIG.ACTIVATION_WHATSAPP_2 || "5500000000000";
-const SUPPORT_WHATSAPP = ZENBARBER_CONFIG.SUPPORT_WHATSAPP || "5500000000000";
+const ACTIVATION_WHATSAPP = "5514996559580";
+const ACTIVATION_WHATSAPP_2 = "5514996559580"; // coloque aqui o WhatsApp do Vitor se quiser receber em dois números
+const SUPPORT_WHATSAPP = "5514996559580";
+
+// Central de Novidades / Notificação de atualização (modelo profissional Supabase)
+// Agora as novidades vêm da tabela public.system_updates e cada visualização
+// é registrada em public.user_update_views. Se as tabelas ainda não existirem,
+// o sistema cai para um fallback local para não quebrar o login.
+const ZEN_APP_VERSION = "v1.9.1";
+const ZEN_RELEASE_DATE = "16/06/2026";
+const ZEN_RELEASE_TITLE = "Central de Novidades profissional";
+const ZEN_RELEASE_NOTES = [
+  "🔔 Novidades carregadas pelo Supabase, sem precisar editar o código a cada atualização.",
+  "👁️ Registro de quais usuários já visualizaram cada novidade.",
+  "📋 Histórico profissional de versões na aba Novidades.",
+  "✅ Popup aparece apenas para quem ainda não viu a atualização."
+];
+const zenUpdatesState = { loaded:false, loading:false, usingSupabase:false, updates:[], seenIds:new Set(), pending:null, lastError:null };
+function fallbackZenUpdate(){
+  return { id:`local_${ZEN_APP_VERSION}`, version:ZEN_APP_VERSION, title:ZEN_RELEASE_TITLE, description:"Atualização do ZenBarber", notes:ZEN_RELEASE_NOTES, created_at:new Date().toISOString(), active:true, fallback:true };
+}
+function normalizeZenUpdate(row){
+  let notes = row?.notes;
+  if(typeof notes === "string"){
+    try{ notes = JSON.parse(notes); }catch(e){ notes = notes.split("\n").filter(Boolean); }
+  }
+  if(!Array.isArray(notes)) notes = [];
+  return {
+    id: row?.id || `local_${row?.version || ZEN_APP_VERSION}`,
+    version: row?.version || ZEN_APP_VERSION,
+    title: row?.title || ZEN_RELEASE_TITLE,
+    description: row?.description || "",
+    notes: notes.length ? notes : ZEN_RELEASE_NOTES,
+    created_at: row?.published_at || row?.created_at || new Date().toISOString(),
+    active: row?.active !== false,
+    fallback: !!row?.fallback
+  };
+}
+function zenUpdateStorageKey(update){
+  const id = me?.id || me?.login || "anon";
+  return `zenbarber_update_seen_${id}_${update?.id || update?.version || ZEN_APP_VERSION}`;
+}
+function hasSeenZenUpdateLocal(update){
+  try{return localStorage.getItem(zenUpdateStorageKey(update)) === "1";}catch(e){return false;}
+}
+function saveSeenZenUpdateLocal(update){
+  try{localStorage.setItem(zenUpdateStorageKey(update), "1");}catch(e){}
+}
+async function loadZenUpdates(force=false){
+  if(!me) return zenUpdatesState;
+  if(zenUpdatesState.loading) return zenUpdatesState;
+  if(zenUpdatesState.loaded && !force) return zenUpdatesState;
+  zenUpdatesState.loading = true;
+  zenUpdatesState.lastError = null;
+  try{
+    const updatesRes = await db.from("system_updates")
+      .select("id,version,title,description,notes,active,created_at,published_at")
+      .eq("active", true)
+      .order("published_at", {ascending:false, nullsFirst:false})
+      .order("created_at", {ascending:false})
+      .limit(20);
+    if(updatesRes.error) throw updatesRes.error;
+    const updates = (updatesRes.data || []).map(normalizeZenUpdate);
+    let seenIds = new Set();
+    if(me?.id && updates.length){
+      const viewsRes = await db.from("user_update_views")
+        .select("update_id")
+        .eq("user_id", me.id)
+        .in("update_id", updates.map(u=>u.id));
+      if(viewsRes.error) throw viewsRes.error;
+      seenIds = new Set((viewsRes.data || []).map(v=>String(v.update_id)));
+    }
+    zenUpdatesState.updates = updates;
+    zenUpdatesState.seenIds = seenIds;
+    zenUpdatesState.pending = updates.find(u=>!seenIds.has(String(u.id)) && !hasSeenZenUpdateLocal(u)) || null;
+    zenUpdatesState.usingSupabase = true;
+  }catch(e){
+    console.warn("Central de Novidades sem Supabase; usando fallback local.", e);
+    const fb = normalizeZenUpdate(fallbackZenUpdate());
+    zenUpdatesState.updates = [fb];
+    zenUpdatesState.seenIds = new Set();
+    zenUpdatesState.pending = hasSeenZenUpdateLocal(fb) ? null : fb;
+    zenUpdatesState.usingSupabase = false;
+    zenUpdatesState.lastError = e?.message || String(e);
+  }finally{
+    zenUpdatesState.loaded = true;
+    zenUpdatesState.loading = false;
+  }
+  return zenUpdatesState;
+}
+function zenReleaseNotesHtml(update=zenUpdatesState.pending || zenUpdatesState.updates[0] || fallbackZenUpdate()){
+  return (update.notes || []).map(n=>`<li>${esc(n)}</li>`).join("");
+}
+async function saveSeenZenUpdate(update=zenUpdatesState.pending || zenUpdatesState.updates[0]){
+  if(!update) return;
+  saveSeenZenUpdateLocal(update);
+  zenUpdatesState.seenIds.add(String(update.id));
+  if(zenUpdatesState.usingSupabase && me?.id && update.id && !String(update.id).startsWith("local_")){
+    const payload = { user_id:me.id, update_id:update.id, viewed_at:new Date().toISOString() };
+    const res = await db.from("user_update_views").upsert(payload, { onConflict:"user_id,update_id" });
+    if(res.error) console.warn("Não foi possível registrar visualização da novidade", res.error);
+  }
+  zenUpdatesState.pending = zenUpdatesState.updates.find(u=>!zenUpdatesState.seenIds.has(String(u.id)) && !hasSeenZenUpdateLocal(u)) || null;
+}
+window.closeZenUpdateModal = async function(){
+  const id = document.getElementById("zenUpdateOverlay")?.dataset?.updateId;
+  const update = zenUpdatesState.updates.find(u=>String(u.id)===String(id)) || zenUpdatesState.pending || zenUpdatesState.updates[0];
+  await saveSeenZenUpdate(update);
+  document.getElementById("zenUpdateOverlay")?.remove();
+};
+window.openZenUpdates = async function(updateId){
+  await loadZenUpdates();
+  const update = zenUpdatesState.updates.find(u=>String(u.id)===String(updateId)) || zenUpdatesState.pending || zenUpdatesState.updates[0] || normalizeZenUpdate(fallbackZenUpdate());
+  const date = update.created_at ? new Date(update.created_at).toLocaleDateString("pt-BR") : ZEN_RELEASE_DATE;
+  const html = `<div id="zenUpdateOverlay" class="zenUpdateOverlay" data-update-id="${esc(update.id)}"><div class="zenUpdateModal">
+    <div class="zenUpdateBadge">🎉 Atualização disponível</div>
+    <h2>ZenBarber atualizado</h2>
+    <p class="muted"><strong>${esc(update.version)}</strong> • ${esc(date)} • ${esc(update.title)}</p>
+    ${update.description ? `<p>${esc(update.description)}</p>` : ""}
+    <ul class="zenUpdateList">${zenReleaseNotesHtml(update)}</ul>
+    <div class="zenUpdateActions"><button class="primary" onclick="closeZenUpdateModal()">Entendi</button><button onclick="document.getElementById('zenUpdateOverlay')?.remove()">Ver depois</button></div>
+  </div></div>`;
+  document.getElementById("zenUpdateOverlay")?.remove();
+  document.body.insertAdjacentHTML("beforeend", html);
+};
+async function maybeShowZenUpdateModal(){
+  if(!me || isAdminRole()) return;
+  await loadZenUpdates();
+  if(!zenUpdatesState.pending) return;
+  setTimeout(()=>{ if(zenUpdatesState.pending) openZenUpdates(zenUpdatesState.pending.id); }, 450);
+}
+function updatesPage(){
+  const status = zenUpdatesState.usingSupabase ? "Supabase ativo" : "Fallback local";
+  const updates = zenUpdatesState.updates.length ? zenUpdatesState.updates : [normalizeZenUpdate(fallbackZenUpdate())];
+  const cards = updates.map(u=>{
+    const seen = zenUpdatesState.seenIds.has(String(u.id)) || hasSeenZenUpdateLocal(u);
+    const date = u.created_at ? new Date(u.created_at).toLocaleDateString("pt-BR") : ZEN_RELEASE_DATE;
+    return `<section class="card"><div class="chartTitle"><div><span class="zenUpdateBadge">${seen?'✅ Visualizada':'🔔 Nova'} • ${esc(u.version)}</span><h3>${esc(u.title)}</h3><p class="muted">Publicado em ${esc(date)}${u.description?' • '+esc(u.description):''}</p></div><button onclick="openZenUpdates('${esc(u.id)}')">Ver detalhes</button></div><ul class="zenUpdateList pageList">${zenReleaseNotesHtml(u)}</ul></section>`;
+  }).join("");
+  return `<section class="card updatesHero"><div><span class="zenUpdateBadge">🔔 Central de Novidades</span><h2>Histórico de atualizações</h2><p class="muted">Modo profissional: novidades no Supabase e visualização registrada por usuário. Status: <strong>${esc(status)}</strong>.</p>${zenUpdatesState.lastError?`<p class="muted">Aviso técnico: ${esc(zenUpdatesState.lastError)}</p>`:''}</div><button class="primary" onclick="loadZenUpdates(true).then(()=>renderApp())">Recarregar novidades</button></section>${cards}`;
+}
+
 const root = document.getElementById("root");
 let me = JSON.parse(sessionStorage.getItem("zenbarber_user") || "null");
 let page = "dashboard";
@@ -152,6 +314,81 @@ function isManagerRole(){ return normalizeRole(me?.role) === "gerente"; }
 function logout(){sessionStorage.removeItem("zenbarber_user");me=null;location.hash="";route()}
 window.logout=logout;
 
+
+// Termos de Uso - v1.0
+// Se no futuro alterar o texto jurídico, troque esta versão para v2.0 para exigir novo aceite.
+const ZEN_TERMS_VERSION = "v1.0";
+
+function requiresTermsAcceptance(){
+  if(!me || isAdminRole()) return false;
+  return me.accepted_terms !== true || String(me.accepted_terms_version || "") !== ZEN_TERMS_VERSION;
+}
+
+function termsTextByRole(){
+  const role = normalizeRole(me?.role);
+  if(role === "barber") return {
+    title: "Termos de Uso do Barbeiro",
+    intro: "Antes de acessar seu painel, leia e aceite as condições de uso do ZenBarber Pro Powered by NextJumpX.",
+    items: [
+      "As informações de agenda, clientes, atendimentos, comissões e faturamento registradas no sistema pertencem à barbearia responsável pelo cadastro.",
+      "O acesso é pessoal e não deve ser compartilhado com terceiros.",
+      "Alterações indevidas, exclusão de dados sem autorização ou uso incorreto da plataforma podem resultar em bloqueio de acesso.",
+      "O ZenBarber Pro Powered by NextJumpX é uma ferramenta de gestão e depende do preenchimento correto das informações pelo usuário."
+    ]
+  };
+  return {
+    title: "Termos de Uso do Gerente / Proprietário",
+    intro: "Antes de acessar sua gestão, leia e aceite as condições de uso do ZenBarber Pro Powered by NextJumpX.",
+    items: [
+      "Você é responsável pela veracidade das informações cadastradas em sua barbearia, incluindo clientes, barbeiros, serviços, comissões e movimentações financeiras.",
+      "O ZenBarber Pro Powered by NextJumpX atua como ferramenta de gestão e não substitui decisões administrativas, financeiras ou jurídicas da barbearia.",
+      "O acesso à plataforma depende de assinatura ativa e poderá ser suspenso em caso de inadimplência, uso indevido ou violação destes termos.",
+      "Você declara estar autorizado a cadastrar e gerenciar os dados da sua unidade dentro da plataforma."
+    ]
+  };
+}
+
+function renderTermsAcceptance(){
+  const t = termsTextByRole();
+  root.innerHTML = `<div class="page termsGatePage"><div class="termsGateCard">
+    <div class="brand bigBrand"><div class="logo officialLogo"><img src="/nextjumpx-symbol.png" alt="NextJumpX"></div><div><h1><span>ZenBarber</span> <span class="proGoldBadge">PRO</span></h1><p class="muted">Powered by NextJumpX • Aceite obrigatório • ${esc(ZEN_TERMS_VERSION)}</p></div></div>
+    <h2>${esc(t.title)}</h2>
+    <p class="muted">${esc(t.intro)}</p>
+    <div class="termsBox">${t.items.map(i=>`<p>• ${esc(i)}</p>`).join("")}</div>
+    <label class="termsCheck"><input id="termsUseCheck" type="checkbox"> <span>Li e aceito os Termos de Uso da plataforma.</span></label>
+    <label class="termsCheck"><input id="termsRespCheck" type="checkbox"> <span>Confirmo que as informações registradas no sistema são de minha responsabilidade.</span></label>
+    <button id="acceptTermsBtn" class="primary termsAcceptBtn" onclick="acceptTermsAndContinue()" disabled>Aceitar e continuar</button>
+    <button class="danger" onclick="logout()">Sair</button>
+  </div></div>`;
+  const syncTermsButton = () => {
+    const ok1 = document.getElementById('termsUseCheck')?.checked;
+    const ok2 = document.getElementById('termsRespCheck')?.checked;
+    const btn = document.getElementById('acceptTermsBtn');
+    if(btn) btn.disabled = !(ok1 && ok2);
+  };
+  document.getElementById('termsUseCheck')?.addEventListener('change', syncTermsButton);
+  document.getElementById('termsRespCheck')?.addEventListener('change', syncTermsButton);
+  syncTermsButton();
+}
+
+window.acceptTermsAndContinue = async () => {
+  const ok1 = document.getElementById('termsUseCheck')?.checked;
+  const ok2 = document.getElementById('termsRespCheck')?.checked;
+  if(!ok1 || !ok2) return toast('Marque as duas confirmações para continuar.');
+  const btn = document.getElementById('acceptTermsBtn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Salvando aceite...'; }
+  try{
+    const row = { accepted_terms:true, accepted_terms_at:new Date().toISOString(), accepted_terms_version:ZEN_TERMS_VERSION };
+    const {data,error} = await db.from('barbers').update(row).eq('id', me.id).select(BARBER_SAFE_COLUMNS).maybeSingle();
+    if(error) return toast('Erro ao salvar aceite: ' + error.message);
+    refreshSessionUser(data || row);
+    toast('Termos aceitos com sucesso.');
+    route();
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = 'Aceitar e continuar'; }
+  }
+};
+
 function minutes(t){ const [h,m]=String(t||"00:00").split(":").map(Number); return h*60+m; }
 function hhmm(min){ return `${String(Math.floor(min/60)).padStart(2,"0")}:${String(min%60).padStart(2,"0")}`; }
 function endTime(time,duration=30){
@@ -172,14 +409,62 @@ function formatDateFullBR(date){
   const [y,m,d]=String(date||'').split('-');
   return (d&&m&&y) ? `${d}/${m}/${y}` : esc(date||'');
 }
+
+function apptSortValue(a){
+  // Ordenação segura de agendamentos usada por Relatórios, Retenção e dashboards.
+  // Mantida global para evitar ReferenceError em perfis que carregam módulos separados.
+  return String(a?.date || '') + ' ' + String(a?.time || '00:00');
+}
+
 function apptWhenHtml(a){
   const end = a?.time ? hhmm(minutes(a.time)+Number(a.services?.duration||30)) : '';
   return `<span class="dateBadge">${formatDateBR(a.date)}</span> <span class="timeBadge">${esc(a.time||'')}</span>${end ? ` <span class="muted">até ${end}</span>` : ''}`;
 }
 function serviceById(id){ return cache.services.find(s=>s.id===id); }
 function durationOfService(id){ return Number(serviceById(id)?.duration || 30); }
+
+// HOTFIX: preço seguro do atendimento/cobrança.
+// Em alguns lançamentos antigos ou vindos de Clientes Fixos/Carteira, o join
+// appointments -> services pode vir vazio no cache, mesmo existindo service_id.
+// Antes isso fazia o botão "Valor a receber" bloquear com "valor original não cadastrado".
+function appointmentService(a){
+  return a?.services || serviceById(a?.service_id) || null;
+}
+function appointmentPrice(a){
+  const svc = appointmentService(a);
+  const candidates = [
+    svc?.price,
+    a?.price,
+    a?.value,
+    a?.amount,
+    a?.total,
+    a?.original_price,
+    a?.original_value
+  ];
+  for(const v of candidates){
+    const n = Number(String(v ?? '').replace('R$','').replace(/\s/g,'').replace(',','.'));
+    if(!Number.isNaN(n) && n > 0) return n;
+  }
+  return 0;
+}
+function appointmentServiceName(a){
+  return appointmentService(a)?.name || a?.service_name || 'Serviço';
+}
 function sameShopName(){ return (me?.shop_name || me?.name || "").trim(); }
-function belongsSameShop(b){ return (b.shop_name||"").trim().toLowerCase() === sameShopName().toLowerCase(); }
+function sameShopId(){ return String(me?.shop_id || "").trim(); }
+function sameShopFilter(row){
+  const sid = sameShopId();
+  if(sid && row?.shop_id) return String(row.shop_id) === sid;
+  return (row?.shop_name||"").trim().toLowerCase() === sameShopName().toLowerCase();
+}
+function shopScopedPayload(extra={}){
+  // HOTFIX URGENTE: garante shop_id também quando o usuário logado não tem shop_id
+  // mas o barbeiro selecionado tem. Isso evita agendamento/cliente fixo sumir após salvar.
+  const barberShopId = extra?.barber_id ? (cache?.shopBarbers||[]).find(b=>String(b.id)===String(extra.barber_id))?.shop_id || (cache?.barbers||[]).find(b=>String(b.id)===String(extra.barber_id))?.shop_id : '';
+  const sid = sameShopId() || barberShopId || (cache?.shopBarbers||[])[0]?.shop_id || '';
+  return sid ? {...extra, shop_id:sid} : extra;
+}
+function belongsSameShop(b){ return sameShopFilter(b); }
 function barberById(id){ return cache.shopBarbers.find(b=>b.id===id) || cache.barbers.find(b=>b.id===id) || null; }
 const DAY_NAMES = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
 function dayIndex(date){ return new Date(date+"T12:00:00").getDay(); }
@@ -407,4 +692,3 @@ function isPastDateTime(date,time){
   const chosen = new Date(`${date}T${time}:00`);
   return chosen.getTime() < now.getTime();
 }
-

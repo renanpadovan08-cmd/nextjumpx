@@ -3,10 +3,31 @@ function bgStyle(url){ url=safeImg(url); return url ? `style="background:linear-
 function avatar(url,name=""){ url=safeImg(url); return url ? `<img class="avatar" src="${esc(url)}" alt="${esc(name)}">` : `<div class="avatar placeholder">✂</div>`; }
 
 const BARBER_PHOTO_PREFIX = "BARBER_PHOTO::";
+const BARBER_NOTE_FLAG_SELF_BLOCK = "AGENDA_SELF_BLOCK=1";
+function barberNoteParts(note){
+  return String(note || "").split("|").map(x=>x.trim()).filter(Boolean);
+}
+function barberNoteHasFlag(note, flag){
+  return barberNoteParts(note).some(x=>x.toUpperCase() === String(flag||"").toUpperCase());
+}
+function barberNoteSetFlag(note, flag, enabled){
+  const parts = barberNoteParts(note).filter(x=>x.toUpperCase() !== String(flag||"").toUpperCase());
+  if(enabled) parts.push(flag);
+  return parts.join(" | ");
+}
+function barberCanSelfBlock(b){
+  return ["admin","gerente"].includes(normalizeRole(b?.role)) || barberNoteHasFlag(b?.activation_note, BARBER_NOTE_FLAG_SELF_BLOCK);
+}
 function barberPhotoUrl(b){
   const note = String(b?.activation_note || "");
-  if(note.startsWith(BARBER_PHOTO_PREFIX)) return note.slice(BARBER_PHOTO_PREFIX.length);
+  const photoPart = barberNoteParts(note).find(x=>x.startsWith(BARBER_PHOTO_PREFIX));
+  if(photoPart) return photoPart.slice(BARBER_PHOTO_PREFIX.length);
   return b?.photo_url || "";
+}
+function barberNoteSetPhoto(note, photoUrl){
+  const parts = barberNoteParts(note).filter(x=>!x.startsWith(BARBER_PHOTO_PREFIX));
+  if(photoUrl) parts.unshift(BARBER_PHOTO_PREFIX + photoUrl);
+  return parts.join(" | ");
 }
 function barberAvatar(b){ return avatar(barberPhotoUrl(b), b?.name || ""); }
 
