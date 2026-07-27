@@ -6,12 +6,24 @@ import {
   isBarberRole,
   sameShop,
 } from '../src/services/accessService.js';
-import { legacyPasswordHash } from '../src/services/passwordPolicy.js';
+import {
+  legacyPasswordHash,
+  loginLookupValues,
+  normalizeLogin,
+} from '../src/services/passwordPolicy.js';
 
 test('gera exatamente o hash usado pelo site legado da main', () => {
   assert.equal(
     legacyPasswordHash(' Joao Silva ', 'Senha123'),
     'zb_sha256_v1$570e8801ebb388e716804e75811d2c9d763c0733d703d652994619f26786689e',
+  );
+});
+
+test('normaliza as variações de login aceitas pela main', () => {
+  assert.equal(normalizeLogin('  Joao Silva  '), 'joao-silva');
+  assert.deepEqual(
+    loginLookupValues('  Joao Silva  '),
+    ['Joao Silva', 'joao silva', 'joao-silva'],
   );
 });
 

@@ -9,6 +9,9 @@ class ProModuleViewModel extends ChangeNotifier {
   bool loading = false;
   bool uploading = false;
   String? error;
+  List<Map<String, dynamic>> supportConversations = [];
+  List<Map<String, dynamic>> supportMessages = [];
+  String? activeConversationId;
 
   String? _feature(ProModule module) => switch (module) {
         ProModule.wallet => 'wallet',
@@ -25,19 +28,112 @@ class ProModuleViewModel extends ChangeNotifier {
 
   Future<void> load(ProModule module) async {
     final feature = _feature(module);
-    if (feature == null && module != ProModule.units) return;
+    if (feature == null &&
+        module != ProModule.units &&
+        module != ProModule.support &&
+        module != ProModule.updates) {
+      return;
+    }
     loading = true;
     notifyListeners();
     try {
-      data = module == ProModule.units
-          ? await _repository.units()
-          : await _repository.get(feature!);
+      if (module == ProModule.units) {
+        data = await _repository.units();
+      } else if (module == ProModule.support) {
+        await _loadSupport();
+      } else if (module == ProModule.updates) {
+        data = await _repository.updates();
+      } else {
+        data = await _repository.get(feature!);
+      }
       error = null;
     } catch (exception) {
       error = '$exception';
     }
     loading = false;
     notifyListeners();
+  }
+
+  Future<void> _loadSupport() async {
+    supportConversations = List<Map<String, dynamic>>.from(
+        await _repository.supportConversations());
+    activeConversationId ??= supportConversations.isEmpty
+        ? null
+        : '${supportConversations.first['id']}';
+    if (activeConversationId != null) {
+      supportMessages = List<Map<String, dynamic>>.from(
+          await _repository.supportMessages(activeConversationId!));
+    } else {
+      supportMessages = [];
+    }
+    data = {
+      'conversations': supportConversations,
+      'messages': supportMessages,
+    };
+  }
+
+  Future<void> selectSupportConversation(String id) async {
+    activeConversationId = id;
+    loading = true;
+    notifyListeners();
+    try {
+      supportMessages = List<Map<String, dynamic>>.from(
+          await _repository.supportMessages(id));
+      error = null;
+    } catch (exception) {
+      error = '$exception';
+    }
+    loading = false;
+    notifyListeners();
+  }
+
+  Future<bool> sendSupportMessage(
+    String body, {
+    String? attachmentUrl,
+  }) async {
+    final conversationId = activeConversationId;
+    if (conversationId == null ||
+        (body.trim().isEmpty &&
+            (attachmentUrl == null || attachmentUrl.isEmpty))) {
+      return false;
+    }
+    try {
+      await _repository.sendSupportMessage(conversationId, {
+        'body': body.trim(),
+        if (attachmentUrl != null && attachmentUrl.isNotEmpty)
+          'attachmentUrl': attachmentUrl,
+      });
+      await selectSupportConversation(conversationId);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> updateSupportConversation(Map<String, dynamic> body) async {
+    final conversationId = activeConversationId;
+    if (conversationId == null) return false;
+    try {
+      await _repository.updateSupportConversation(conversationId, body);
+      await load(ProModule.support);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> markUpdateViewed(String id) async {
+    try {
+      await _repository.markUpdateViewed(id);
+      await load(ProModule.updates);
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+    }
   }
 
   Future<bool> createUnit(Map<String, dynamic> body) async {

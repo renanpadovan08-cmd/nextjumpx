@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { supabase } from './supabaseService.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -102,7 +103,7 @@ async function ensurePublicImagesBucket() {
 
 export async function uploadPublicImage(user, input) {
   const image = decodeImageUpload(input);
-  const kind = ['logo', 'background', 'professional'].includes(input.kind)
+  const kind = ['logo', 'background', 'professional', 'support'].includes(input.kind)
     ? input.kind
     : 'image';
 
@@ -110,13 +111,17 @@ export async function uploadPublicImage(user, input) {
 
   const shop = safePathSegment(user.shopId || user.id);
   const owner = safePathSegment(user.id);
-  const basePath = `${shop}/${owner}/${kind}`;
+  const basePath = kind === 'support'
+    ? `${shop}/${owner}/support/${Date.now()}_${randomUUID()}`
+    : `${shop}/${owner}/${kind}`;
   const path = `${basePath}.${image.extension}`;
   const bucket = supabase.storage.from(publicImagesBucket);
-  const obsoletePaths = ['jpg', 'png', 'webp', 'gif']
-    .filter((extension) => extension !== image.extension)
-    .map((extension) => `${basePath}.${extension}`);
-  await bucket.remove(obsoletePaths);
+  if (kind !== 'support') {
+    const obsoletePaths = ['jpg', 'png', 'webp', 'gif']
+      .filter((extension) => extension !== image.extension)
+      .map((extension) => `${basePath}.${extension}`);
+    await bucket.remove(obsoletePaths);
+  }
 
   const { error } = await bucket.upload(path, image.buffer, {
     contentType: image.contentType,

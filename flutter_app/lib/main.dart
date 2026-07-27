@@ -69,7 +69,9 @@ class _ZenBarberAppState extends State<ZenBarberApp> {
                 : app.authenticated
                     ? app.user!.mustChangePassword
                         ? ForcedPasswordScreen(viewModel: app)
-                        : AppShell(app: app)
+                        : app.user!.requiresTermsAcceptance
+                            ? TermsAcceptanceScreen(viewModel: app)
+                            : AppShell(app: app)
                     : showLogin
                         ? LoginScreen(viewModel: app)
                         : NextJumpXLandingScreen(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/pwa_install.dart';
 import '../core/theme/zen_colors.dart';
 import '../core/view_models/app_view_model.dart';
 
@@ -19,6 +20,163 @@ class ForcedPasswordScreen extends StatefulWidget {
 
   @override
   State<ForcedPasswordScreen> createState() => _ForcedPasswordScreenState();
+}
+
+class TermsAcceptanceScreen extends StatefulWidget {
+  const TermsAcceptanceScreen({super.key, required this.viewModel});
+
+  final AppViewModel viewModel;
+
+  @override
+  State<TermsAcceptanceScreen> createState() => _TermsAcceptanceScreenState();
+}
+
+class _TermsAcceptanceScreenState extends State<TermsAcceptanceScreen> {
+  bool acceptedUse = false;
+  bool acceptedResponsibility = false;
+
+  bool get canContinue =>
+      acceptedUse && acceptedResponsibility && !widget.viewModel.loading;
+
+  Future<void> _accept() async {
+    final ok = await widget.viewModel.acceptTerms();
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(widget.viewModel.error ??
+              'Não foi possível registrar o aceite dos termos.')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isBarber = widget.viewModel.user?.role == 'barber' ||
+        widget.viewModel.user?.role == 'barbeiro';
+    final title = isBarber
+        ? 'Termos de Uso do Barbeiro'
+        : 'Termos de Uso do Gerente / Proprietário';
+    final intro = isBarber
+        ? 'Antes de acessar seu painel, leia e aceite as condições de uso do ZenBarber Pro Powered by NextJumpX.'
+        : 'Antes de acessar sua gestão, leia e aceite as condições de uso do ZenBarber Pro Powered by NextJumpX.';
+    final items = isBarber
+        ? const [
+            'As informações de agenda, clientes, atendimentos, comissões e faturamento registradas no sistema pertencem à barbearia responsável pelo cadastro.',
+            'O acesso é pessoal e não deve ser compartilhado com terceiros.',
+            'Alterações indevidas, exclusão de dados sem autorização ou uso incorreto da plataforma podem resultar em bloqueio de acesso.',
+            'O ZenBarber Pro Powered by NextJumpX é uma ferramenta de gestão e depende do preenchimento correto das informações pelo usuário.',
+          ]
+        : const [
+            'Você é responsável pela veracidade das informações cadastradas em sua barbearia, incluindo clientes, barbeiros, serviços, comissões e movimentações financeiras.',
+            'O ZenBarber Pro Powered by NextJumpX atua como ferramenta de gestão e não substitui decisões administrativas, financeiras ou jurídicas da barbearia.',
+            'O acesso à plataforma depende de assinatura ativa e poderá ser suspenso em caso de inadimplência, uso indevido ou violação destes termos.',
+            'Você declara estar autorizado a cadastrar e gerenciar os dados da sua unidade dentro da plataforma.',
+          ];
+
+    return Scaffold(
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: _ZenPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff090d12),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xffb39138)),
+                      ),
+                      child: Image.asset(
+                          'assets/images/nextjumpx-logo-transparent.png'),
+                    ),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('ZENBARBER  PRO',
+                              style: TextStyle(
+                                  fontSize: 23, fontWeight: FontWeight.w900)),
+                          Text(
+                              'Powered by NextJumpX • Aceite obrigatório • v1.0',
+                              style: TextStyle(
+                                  color: Color(0xffaab8cc), fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 22),
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 25, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  Text(intro,
+                      style: const TextStyle(
+                          color: Color(0xffaab8cc), height: 1.4)),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff091221),
+                      border: Border.all(color: const Color(0xff26364c)),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: items
+                          .map((item) => Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 6),
+                                child: Text('• $item',
+                                    style: const TextStyle(height: 1.4)),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  CheckboxListTile(
+                    value: acceptedUse,
+                    onChanged: (value) =>
+                        setState(() => acceptedUse = value == true),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text(
+                        'Li e aceito os Termos de Uso da plataforma.'),
+                  ),
+                  CheckboxListTile(
+                    value: acceptedResponsibility,
+                    onChanged: (value) =>
+                        setState(() => acceptedResponsibility = value == true),
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text(
+                        'Confirmo que as informações registradas no sistema são de minha responsabilidade.'),
+                  ),
+                  const SizedBox(height: 10),
+                  _GreenAction(
+                    label: widget.viewModel.loading
+                        ? 'Salvando aceite...'
+                        : 'Aceitar e continuar',
+                    onTap: canContinue ? _accept : null,
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: widget.viewModel.logout,
+                    child: const Text('Sair'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ForcedPasswordScreenState extends State<ForcedPasswordScreen> {
@@ -268,7 +426,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ];
 
-                  return Center(
+                  return Align(
+                    alignment: Alignment.topCenter,
                     child: SingleChildScrollView(
                       padding: EdgeInsets.fromLTRB(
                         24,
@@ -694,34 +853,51 @@ class _InstallHint extends StatelessWidget {
 
   final bool compact;
 
+  Future<void> _install(BuildContext context) async {
+    final accepted = await promptPwaInstall();
+    if (!accepted && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'A instalação ainda não está disponível. Use o menu do navegador para instalar o aplicativo.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Material(
         color: Colors.transparent,
-        child: Container(
-          padding:
-              EdgeInsets.symmetric(horizontal: compact ? 12 : 17, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xee0b1515),
-            border: Border.all(color: const Color(0xff365249)),
-            borderRadius: BorderRadius.circular(99),
-            boxShadow: const [
-              BoxShadow(color: Color(0x99000000), blurRadius: 20)
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.install_desktop_rounded,
-                  color: Color(0xff51dd76), size: 20),
-              if (!compact) ...[
-                const SizedBox(width: 8),
-                const Text(
-                  'Instalar ZenBarber',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w900),
-                ),
+        child: InkWell(
+          onTap: () => _install(context),
+          borderRadius: BorderRadius.circular(99),
+          child: Container(
+            padding: EdgeInsets.symmetric(
+                horizontal: compact ? 12 : 17, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xee0b1515),
+              border: Border.all(color: const Color(0xff365249)),
+              borderRadius: BorderRadius.circular(99),
+              boxShadow: const [
+                BoxShadow(color: Color(0x99000000), blurRadius: 20)
               ],
-            ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.install_desktop_rounded,
+                    color: Color(0xff51dd76), size: 20),
+                if (!compact) ...[
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Instalar ZenBarber',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w900),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       );

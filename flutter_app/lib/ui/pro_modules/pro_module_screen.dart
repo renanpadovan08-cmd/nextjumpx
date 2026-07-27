@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -21,15 +22,21 @@ enum ProModule {
   profile,
   hours,
   support,
-  units
+  units,
+  updates
 }
 
 class ProModuleScreen extends StatefulWidget {
-  const ProModuleScreen(
-      {super.key, required this.module, required this.viewModel});
+  const ProModuleScreen({
+    super.key,
+    required this.module,
+    required this.viewModel,
+    this.currentUserIsAdmin = false,
+  });
 
   final ProModule module;
   final ProModuleViewModel viewModel;
+  final bool currentUserIsAdmin;
 
   @override
   State<ProModuleScreen> createState() => _ProModuleScreenState();
@@ -38,6 +45,8 @@ class ProModuleScreen extends StatefulWidget {
 class _ProModuleScreenState extends State<ProModuleScreen> {
   final Map<String, String> _commissionInputs = {};
   final Map<String, String> _currentInputs = {};
+  final TextEditingController _supportMessage = TextEditingController();
+  Timer? _supportRefreshTimer;
   String _activeFilter = 'Todos';
   List<Map<String, dynamic>>? _weeklySchedule;
 
@@ -47,6 +56,13 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     widget.viewModel
       ..addListener(_refresh)
       ..load(widget.module);
+    if (widget.module == ProModule.support) {
+      _supportRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+        if (mounted && !widget.viewModel.loading) {
+          widget.viewModel.load(ProModule.support);
+        }
+      });
+    }
   }
 
   void _refresh() {
@@ -56,6 +72,8 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
   @override
   void dispose() {
     widget.viewModel.removeListener(_refresh);
+    _supportRefreshTimer?.cancel();
+    _supportMessage.dispose();
     super.dispose();
   }
 
@@ -71,6 +89,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
         ProModule.hours => 'Funcionamento',
         ProModule.support => 'Suporte / Chat',
         ProModule.units => 'Unidades',
+        ProModule.updates => 'Novidades',
       };
 
   void _message(String value) => ScaffoldMessenger.of(context).showSnackBar(
@@ -100,6 +119,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
             ProModule.hours => _hours(),
             ProModule.support => _support(),
             ProModule.units => _units(),
+            ProModule.updates => _updates(),
           },
         ],
       );
@@ -140,6 +160,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           'Expediente, intervalos e disponibilidade da agenda.',
         ProModule.support => 'Fale com o time NextJumpX quando precisar.',
         ProModule.units => 'Gerencie as unidades e a operação multiunidade.',
+        ProModule.updates => 'Acompanhe as melhorias publicadas no ZenBarber.',
       };
 
   List<Map<String, dynamic>> get _rows =>
@@ -1076,34 +1097,394 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     }
   }
 
-  Widget _support() => _surface('Como podemos ajudar?',
-          'Envie sua dúvida para o suporte ou acesse respostas rápidas.', [
+  Widget _support() {
+    final conversations = widget.viewModel.supportConversations;
+    final activeId = widget.viewModel.activeConversationId;
+    final active = conversations.cast<Map<String, dynamic>?>().firstWhere(
+          (row) => '${row?['id']}' == activeId,
+          orElse: () => null,
+        );
+    final messages = widget.viewModel.supportMessages;
+
+    return _surface(
+      'Atendimento NextJumpX',
+      'Conversa persistente entre a barbearia e a equipe de suporte.',
+      [
+        if (conversations.isEmpty && !widget.viewModel.loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: Text(
+              'Nenhuma conversa disponível.',
+              style: TextStyle(color: ZenColors.muted),
+            ),
+          ),
+        if (widget.currentUserIsAdmin && conversations.isNotEmpty)
+          DropdownButtonFormField<String>(
+            initialValue: activeId,
+            decoration: const InputDecoration(
+              labelText: 'Barbearia atendida',
+              prefixIcon: Icon(Icons.storefront_outlined),
+            ),
+            items: conversations
+                .map(
+                  (conversation) => DropdownMenuItem(
+                    value: '${conversation['id']}',
+                    child: Text(
+                      '${conversation['shop_name'] ?? 'Barbearia'} · ${conversation['status'] ?? 'aberta'}',
+                    ),
+                  ),
+                )
+                .toList(),
+            onChanged: (id) {
+              if (id != null) {
+                widget.viewModel.selectSupportConversation(id);
+              }
+            },
+          ),
+        if (active != null) ...[
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${active['shop_name'] ?? 'Barbearia'}'
+                  '${active['anydesk_code'] == null || '${active['anydesk_code']}'.isEmpty ? '' : ' · AnyDesk: ${active['anydesk_code']}'}',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Cadastrar AnyDesk',
+                onPressed: () =>
+                    _editAnydesk('${active['anydesk_code'] ?? ''}'),
+                icon: const Icon(Icons.desktop_windows_outlined),
+              ),
+              IconButton(
+                tooltip: 'Atualizar conversa',
+                onPressed: widget.viewModel.loading
+                    ? null
+                    : () => widget.viewModel.load(ProModule.support),
+                icon: const Icon(Icons.refresh_rounded),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Alterar situação',
+                onSelected: (status) => widget.viewModel
+                    .updateSupportConversation({'status': status}),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'aberta', child: Text('Aberta')),
+                  PopupMenuItem(value: 'aguardando', child: Text('Aguardando')),
+                  PopupMenuItem(value: 'resolvida', child: Text('Resolvida')),
+                ],
+                child: ZenStatusPill(
+                  label: '${active['status'] ?? 'aberta'}',
+                  color: active['status'] == 'resolvida'
+                      ? ZenColors.green
+                      : ZenColors.gold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            height: 360,
+            padding: const EdgeInsets.all(12),
+            decoration: _inset(),
+            child: messages.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Envie a primeira mensagem para o suporte.',
+                      style: TextStyle(color: ZenColors.muted),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: messages.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 9),
+                    itemBuilder: (_, messageIndex) {
+                      final message = messages[messageIndex];
+                      final sentByAdmin = message['sender_role'] == 'admin';
+                      final mine = widget.currentUserIsAdmin
+                          ? sentByAdmin
+                          : !sentByAdmin;
+                      return Align(
+                        alignment:
+                            mine ? Alignment.centerRight : Alignment.centerLeft,
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 520),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 13, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: mine
+                                ? const Color(0xff0b4b32)
+                                : const Color(0xff152232),
+                            border: Border.all(
+                              color: mine
+                                  ? const Color(0xff277c52)
+                                  : const Color(0xff293b50),
+                            ),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${message['sender_name'] ?? (sentByAdmin ? 'NextJumpX' : 'Barbearia')}',
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: ZenColors.muted,
+                                    fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 4),
+                              if ('${message['body'] ?? ''}'.isNotEmpty)
+                                Text('${message['body']}'),
+                              if ('${message['attachment_url'] ?? ''}'
+                                  .isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                InkWell(
+                                  onTap: () => _openExternal(Uri.parse(
+                                      '${message['attachment_url']}')),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(9),
+                                    child: Image.network(
+                                      '${message['attachment_url']}',
+                                      width: 260,
+                                      height: 180,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => const Text(
+                                        'Abrir imagem anexada',
+                                        style:
+                                            TextStyle(color: ZenColors.green),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton.filledTonal(
+                tooltip: 'Anexar imagem',
+                onPressed:
+                    widget.viewModel.uploading ? null : _sendSupportAttachment,
+                icon: const Icon(Icons.attach_file_rounded),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: _supportMessage,
+                  minLines: 1,
+                  maxLines: 4,
+                  maxLength: 4000,
+                  decoration: const InputDecoration(
+                    labelText: 'Mensagem',
+                    hintText: 'Digite como podemos ajudar...',
+                  ),
+                  onSubmitted: (_) => _sendSupportMessage(),
+                ),
+              ),
+              const SizedBox(width: 10),
+              FilledButton.icon(
+                onPressed:
+                    widget.viewModel.loading ? null : _sendSupportMessage,
+                icon: const Icon(Icons.send_rounded),
+                label: const Text('Enviar'),
+              ),
+            ],
+          ),
+        ],
+        const Divider(height: 34),
         ListTile(
           contentPadding: EdgeInsets.zero,
-          leading: const CircleAvatar(child: Icon(Icons.chat)),
-          title: const Text('Falar com suporte'),
-          subtitle: const Text(
-              'Nossa equipe responde pelo WhatsApp em horário comercial.'),
-          trailing: FilledButton(
+          leading: const CircleAvatar(child: Icon(Icons.phone_in_talk)),
+          title: const Text('Atendimento pelo WhatsApp'),
+          subtitle: const Text('Canal alternativo em horário comercial.'),
+          trailing: OutlinedButton(
             onPressed: () => _openExternal(Uri.parse(
                 'https://wa.me/${AppConfig.supportWhatsApp}?text=${Uri.encodeComponent('Olá! Preciso de ajuda com o ZenBarber.')}')),
-            child: const Text('Abrir WhatsApp'),
-          ),
-        ),
-        const Divider(),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const CircleAvatar(child: Icon(Icons.help_outline)),
-          title: const Text('Central NextJumpX'),
-          subtitle:
-              const Text('Novidades, documentação e canais de atendimento.'),
-          trailing: OutlinedButton(
-            onPressed: () =>
-                _openExternal(Uri.parse('https://nextjumpx.com.br')),
             child: const Text('Abrir'),
           ),
         ),
-      ]);
+      ],
+    );
+  }
+
+  Future<void> _sendSupportMessage() async {
+    final text = _supportMessage.text.trim();
+    if (text.isEmpty) return;
+    final sent = await widget.viewModel.sendSupportMessage(text);
+    if (sent) {
+      _supportMessage.clear();
+    } else if (mounted) {
+      _message(widget.viewModel.error ?? 'Não foi possível enviar a mensagem.');
+    }
+  }
+
+  Future<void> _sendSupportAttachment() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+      withData: true,
+    );
+    final file = result?.files.single;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) return;
+    if (bytes.length > 4 * 1024 * 1024) {
+      _message('A imagem deve ter no máximo 4 MB.');
+      return;
+    }
+
+    final url = await widget.viewModel.uploadImage({
+      'fileName': file.name,
+      'data': base64Encode(bytes),
+      'kind': 'support',
+    });
+    if (url == null || url.isEmpty) {
+      if (mounted) {
+        _message(widget.viewModel.error ?? 'Não foi possível enviar a imagem.');
+      }
+      return;
+    }
+    final sent = await widget.viewModel.sendSupportMessage(
+      '',
+      attachmentUrl: url,
+    );
+    if (!sent && mounted) {
+      _message(widget.viewModel.error ?? 'Não foi possível anexar a imagem.');
+    }
+  }
+
+  Future<void> _editAnydesk(String currentCode) async {
+    final controller = TextEditingController(text: currentCode);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Código AnyDesk'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 80,
+          decoration: const InputDecoration(
+            hintText: 'Ex: 123 456 789',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null) return;
+    final saved = await widget.viewModel
+        .updateSupportConversation({'anydeskCode': value});
+    if (mounted) {
+      _message(saved
+          ? (value.isEmpty ? 'AnyDesk removido.' : 'AnyDesk salvo.')
+          : 'Não foi possível salvar o AnyDesk.');
+    }
+  }
+
+  Widget _updates() => _surface(
+        'Histórico de novidades',
+        'Recursos, correções e melhorias entregues no sistema.',
+        [
+          if (_rows.isEmpty && !widget.viewModel.loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Text(
+                'Nenhuma novidade publicada.',
+                style: TextStyle(color: ZenColors.muted),
+              ),
+            )
+          else
+            ..._rows.map((update) {
+              final viewed = update['viewed'] == true;
+              final notes = update['notes'] is List
+                  ? List<dynamic>.from(update['notes'] as List)
+                  : const <dynamic>[];
+              return Container(
+                margin: const EdgeInsets.only(top: 14),
+                padding: const EdgeInsets.all(18),
+                decoration: _inset(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${update['title'] ?? 'Atualização'}',
+                            style: const TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        if (!viewed)
+                          const ZenStatusPill(
+                              label: 'NOVA', color: ZenColors.green),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${update['version'] ?? ''}',
+                          style: const TextStyle(
+                              color: ZenColors.gold,
+                              fontWeight: FontWeight.w900),
+                        ),
+                      ],
+                    ),
+                    if ('${update['description'] ?? ''}'.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '${update['description']}',
+                        style: const TextStyle(color: ZenColors.muted),
+                      ),
+                    ],
+                    if (notes.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      ...notes.map(
+                        (note) => Padding(
+                          padding: const EdgeInsets.only(bottom: 7),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.check_circle,
+                                  size: 17, color: ZenColors.green),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text('$note')),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                    if (!viewed) ...[
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () => widget.viewModel
+                              .markUpdateViewed('${update['id']}'),
+                          icon: const Icon(Icons.done_all),
+                          label: const Text('Marcar como vista'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }),
+        ],
+      );
 
   Future<void> _openExternal(Uri uri) async {
     final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);

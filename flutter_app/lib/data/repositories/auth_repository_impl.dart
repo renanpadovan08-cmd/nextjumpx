@@ -15,6 +15,8 @@ class AuthRepositoryImpl implements IAuthRepository {
   Future<void> changePassword(String password) =>
       _source.changePassword(password);
   @override
+  Future<AuthUserDto> acceptTerms() => _source.acceptTerms();
+  @override
   Future<AuthUserDto> signup(
           {required String name,
           required String login,

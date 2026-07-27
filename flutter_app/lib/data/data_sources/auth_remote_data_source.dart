@@ -19,6 +19,11 @@ class AuthRemoteDataSource {
       AuthUserDto.fromJson(await _api.get('/auth/me') as Map<String, dynamic>);
   Future<void> changePassword(String password) =>
       _api.post('/auth/change-password', {'password': password});
+  Future<AuthUserDto> acceptTerms() async =>
+      AuthUserDto.fromJson(await _api.post('/auth/accept-terms', {
+        'accepted': true,
+        'responsibilityConfirmed': true,
+      }) as Map<String, dynamic>);
   Future<AuthUserDto> signup(
           {required String name,
           required String login,

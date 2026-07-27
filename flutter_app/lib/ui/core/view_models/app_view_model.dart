@@ -100,4 +100,20 @@ class AppViewModel extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  Future<bool> acceptTerms() async {
+    error = null;
+    loading = true;
+    notifyListeners();
+    try {
+      user = await _authRepository.acceptTerms();
+      return true;
+    } on ApiException catch (exception) {
+      error = exception.message;
+      return false;
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
 }

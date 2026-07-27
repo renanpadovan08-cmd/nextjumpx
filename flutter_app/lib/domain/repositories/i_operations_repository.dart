@@ -10,4 +10,12 @@ abstract interface class IOperationsRepository {
   Future<dynamic> createCashClosure(Map<String, dynamic> body);
   Future<dynamic> createRetentionAction(Map<String, dynamic> body);
   Future<dynamic> uploadImage(Map<String, dynamic> body);
+  Future<List<dynamic>> supportConversations();
+  Future<List<dynamic>> supportMessages(String conversationId);
+  Future<dynamic> sendSupportMessage(
+      String conversationId, Map<String, dynamic> body);
+  Future<dynamic> updateSupportConversation(
+      String conversationId, Map<String, dynamic> body);
+  Future<List<dynamic>> updates();
+  Future<void> markUpdateViewed(String updateId);
 }

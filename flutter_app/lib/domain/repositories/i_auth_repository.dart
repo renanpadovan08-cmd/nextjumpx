@@ -5,6 +5,7 @@ abstract interface class IAuthRepository {
       String login, String password);
   Future<AuthUserDto> me();
   Future<void> changePassword(String password);
+  Future<AuthUserDto> acceptTerms();
   Future<AuthUserDto> signup(
       {required String name,
       required String login,

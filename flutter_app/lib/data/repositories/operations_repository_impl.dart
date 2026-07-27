@@ -40,4 +40,23 @@ class OperationsRepositoryImpl implements IOperationsRepository {
   @override
   Future<dynamic> uploadImage(Map<String, dynamic> body) =>
       _source.uploadImage(body);
+  @override
+  Future<List<dynamic>> supportConversations() =>
+      _source.supportConversations();
+  @override
+  Future<List<dynamic>> supportMessages(String conversationId) =>
+      _source.supportMessages(conversationId);
+  @override
+  Future<dynamic> sendSupportMessage(
+          String conversationId, Map<String, dynamic> body) =>
+      _source.sendSupportMessage(conversationId, body);
+  @override
+  Future<dynamic> updateSupportConversation(
+          String conversationId, Map<String, dynamic> body) =>
+      _source.updateSupportConversation(conversationId, body);
+  @override
+  Future<List<dynamic>> updates() => _source.updates();
+  @override
+  Future<void> markUpdateViewed(String updateId) =>
+      _source.markUpdateViewed(updateId);
 }

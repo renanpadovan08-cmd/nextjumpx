@@ -30,4 +30,20 @@ class OperationsRemoteDataSource {
       _api.post('/operations/retention/actions', body);
   Future<dynamic> uploadImage(Map<String, dynamic> body) =>
       _api.post('/uploads/images', body);
+  Future<List<dynamic>> supportConversations() async =>
+      await _api.get('/support/conversations') as List<dynamic>;
+  Future<List<dynamic>> supportMessages(String conversationId) async =>
+      await _api.get('/support/conversations/$conversationId/messages')
+          as List<dynamic>;
+  Future<dynamic> sendSupportMessage(
+          String conversationId, Map<String, dynamic> body) =>
+      _api.post('/support/conversations/$conversationId/messages', body);
+  Future<dynamic> updateSupportConversation(
+          String conversationId, Map<String, dynamic> body) =>
+      _api.patch('/support/conversations/$conversationId', body);
+  Future<List<dynamic>> updates() async =>
+      await _api.get('/updates') as List<dynamic>;
+  Future<void> markUpdateViewed(String updateId) async {
+    await _api.post('/updates/$updateId/view', const {});
+  }
 }

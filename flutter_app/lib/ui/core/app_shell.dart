@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/pwa_install.dart';
 import '../../dependency_injection/factories/agenda_factory.dart';
 import '../../dependency_injection/factories/admin_factory.dart';
 import '../../dependency_injection/factories/barbers_factory.dart';
@@ -73,9 +74,13 @@ class _AppShellState extends State<AppShell> {
   late final ProModuleScreen hours = ProModuleScreen(
       module: ProModule.hours, viewModel: ProModuleFactory.build());
   late final ProModuleScreen support = ProModuleScreen(
-      module: ProModule.support, viewModel: ProModuleFactory.build());
+      module: ProModule.support,
+      viewModel: ProModuleFactory.build(),
+      currentUserIsAdmin: widget.app.user!.isAdmin);
   late final ProModuleScreen units = ProModuleScreen(
       module: ProModule.units, viewModel: ProModuleFactory.build());
+  late final ProModuleScreen updates = ProModuleScreen(
+      module: ProModule.updates, viewModel: ProModuleFactory.build());
   late final AdminScreen admin = AdminScreen(viewModel: AdminFactory.build());
 
   @override
@@ -86,7 +91,7 @@ class _AppShellState extends State<AppShell> {
       canManage: widget.app.user!.isManager,
       onNavigate: _navigate,
     );
-    if (widget.app.user!.isAdmin) index = 18;
+    if (widget.app.user!.isAdmin) index = 19;
   }
 
   List<Widget> get screens => [
@@ -108,6 +113,7 @@ class _AppShellState extends State<AppShell> {
         hours,
         support,
         units,
+        updates,
         if (widget.app.user!.isAdmin) admin,
       ];
 
@@ -137,15 +143,10 @@ class _AppShellState extends State<AppShell> {
         15 => 'Funcionamento',
         16 => 'Suporte / Chat',
         17 => 'Unidades',
-        18 => 'Gestao PRO',
+        18 => 'Novidades',
+        19 => 'Gestao PRO',
         _ => 'Dashboard',
       };
-
-  void _unavailable(String label) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$label estará disponível em breve.')),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -255,12 +256,14 @@ class _AppShellState extends State<AppShell> {
                 if (widget.app.user!.isManager) ...[
                   const _UnitPicker(),
                   const SizedBox(width: 10),
-                  _HeaderButton(label: 'Gerenciar', onTap: () => _navigate(17)),
+                  _HeaderButton(
+                      label: 'Gerenciar',
+                      onTap: () =>
+                          _navigate(widget.app.user!.isAdmin ? 19 : 17)),
                   const SizedBox(width: 12),
                 ],
                 _HeaderButton(
-                    label: '🔔 Novidades',
-                    onTap: () => _unavailable('Novidades')),
+                    label: '🔔 Novidades', onTap: () => _navigate(18)),
                 const SizedBox(width: 12),
                 _HeaderButton(
                     label: 'Atualizar', onTap: () => _navigate(index)),
@@ -307,7 +310,7 @@ class _AppShellState extends State<AppShell> {
                       _nav('Dashboard PRO', Icons.grid_view_rounded, 0),
                       if (widget.app.user!.isAdmin)
                         _nav('Gestao PRO', Icons.admin_panel_settings_outlined,
-                            18),
+                            19),
                       if (widget.app.user!.isManager) ...[
                         _nav('Pendências / Baixa',
                             Icons.assignment_late_outlined, 7),
@@ -329,8 +332,10 @@ class _AppShellState extends State<AppShell> {
                     const SizedBox(height: 10),
                     _section('SUPORTE', suporteOpen,
                         () => setState(() => suporteOpen = !suporteOpen)),
-                    if (suporteOpen)
+                    if (suporteOpen) ...[
                       _nav('Suporte / Chat', Icons.support_agent_rounded, 16),
+                      _nav('Novidades', Icons.notifications_none_rounded, 18),
+                    ],
                   ],
                 ),
               ),
@@ -549,21 +554,43 @@ class _HeaderButton extends StatelessWidget {
 
 class _InstallPill extends StatelessWidget {
   const _InstallPill();
+
+  Future<void> _install(BuildContext context) async {
+    final accepted = await promptPwaInstall();
+    if (!accepted && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'A instalação ainda não está disponível. Use o menu do navegador para instalar o aplicativo.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-        decoration: BoxDecoration(
-            color: const Color(0xf0122423),
-            border: Border.all(color: const Color(0xff49685d)),
-            borderRadius: BorderRadius.circular(99),
-            boxShadow: const [
-              BoxShadow(color: Color(0x99000000), blurRadius: 22)
+  Widget build(BuildContext context) => Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _install(context),
+          borderRadius: BorderRadius.circular(99),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            decoration: BoxDecoration(
+                color: const Color(0xf0122423),
+                border: Border.all(color: const Color(0xff49685d)),
+                borderRadius: BorderRadius.circular(99),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x99000000), blurRadius: 22)
+                ]),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.install_desktop_rounded,
+                  color: ZenColors.green, size: 20),
+              SizedBox(width: 7),
+              Text('Instalar ZenBarber',
+                  style: TextStyle(fontWeight: FontWeight.w900))
             ]),
-        child: const Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.install_desktop_rounded, color: ZenColors.green, size: 20),
-          SizedBox(width: 7),
-          Text('Instalar ZenBarber',
-              style: TextStyle(fontWeight: FontWeight.w900))
-        ]),
+          ),
+        ),
       );
 }

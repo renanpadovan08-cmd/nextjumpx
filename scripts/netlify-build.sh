@@ -22,4 +22,6 @@ export PATH="$FLUTTER_DIR/bin:$PATH"
 flutter --disable-analytics
 
 (cd backend_api && npm ci)
-(cd flutter_app && flutter pub get && flutter build web --release --dart-define=API_BASE_URL=/api)
+(cd flutter_app && flutter pub get && flutter build web --release \
+  --dart-define=API_BASE_URL=/api \
+  --dart-define=SUPPORT_WHATSAPP="${SUPPORT_WHATSAPP:-5514996559580}")

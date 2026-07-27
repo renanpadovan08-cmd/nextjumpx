@@ -12,6 +12,32 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <script>
+    window.zenInstallPrompt = null;
+    window.zenCanInstall = false;
+
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      window.zenInstallPrompt = event;
+      window.zenCanInstall = true;
+      window.dispatchEvent(new CustomEvent('zen-install-available'));
+    });
+
+    window.addEventListener('appinstalled', () => {
+      window.zenInstallPrompt = null;
+      window.zenCanInstall = false;
+    });
+
+    window.zenPromptInstall = async () => {
+      const prompt = window.zenInstallPrompt;
+      if (!prompt) return false;
+      prompt.prompt();
+      const choice = await prompt.userChoice;
+      window.zenInstallPrompt = null;
+      window.zenCanInstall = false;
+      return choice && choice.outcome === 'accepted';
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

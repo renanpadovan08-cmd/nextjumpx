@@ -8,6 +8,6 @@ class AppConfig {
 
   static const supportWhatsApp = String.fromEnvironment(
     'SUPPORT_WHATSAPP',
-    defaultValue: '5500000000000',
+    defaultValue: '5514996559580',
   );
 }

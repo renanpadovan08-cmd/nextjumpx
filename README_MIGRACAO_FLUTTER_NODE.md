@@ -46,6 +46,8 @@ Esta branch cobre os fluxos comerciais que existiam na `main`:
 - clientes fixos, recorrência semanal/quinzenal/mensal, carteira e pagamentos;
 - pendências, WhatsApp, comissões, ranking, retenção, caixa, metas e unidades;
 - painel administrativo, planos, vencimentos, pagamentos e solicitações.
+- aceite obrigatório dos Termos de Uso, chat persistente de suporte, Central de
+  Novidades e instalação PWA pelo navegador.
 
 Contas criadas pelo site antigo continuam acessando normalmente. A API reconhece
 o hash `zb_sha256_v1$` usado na `main` e o substitui por bcrypt depois do primeiro
@@ -55,12 +57,20 @@ Antes do corte de produção:
 
 1. Aplique `SQL_MIGRACAO_DEFINITIVA_FLUTTER_NODE.sql` no mesmo Supabase da
    instalação atual. Ele consolida as alterações necessárias sem remover dados.
-2. Configure no backend `JWT_SECRET`, `SUPABASE_URL`,
+2. Aplique `SQL_CUTOVER_PARIDADE_MAIN.sql`. Ele preserva as tabelas existentes
+   e acrescenta, de forma idempotente, os campos de aceite, suporte e novidades.
+3. Configure no backend `JWT_SECRET`, `SUPABASE_URL`,
    `SUPABASE_SERVICE_ROLE_KEY` e `CORS_ORIGIN`.
-3. Gere o Flutter com `API_BASE_URL=/api` quando frontend e API estiverem no
+4. Gere o Flutter com `API_BASE_URL=/api` quando frontend e API estiverem no
    mesmo domínio.
-4. Valide login de administrador, gerente e barbeiro, depois realize um
+5. Valide login de administrador, gerente e barbeiro, depois realize um
    agendamento completo pelo link público.
+
+Esta branch não deve ser publicada por arrastar a pasta no Netlify Drop: o
+deploy precisa executar `scripts/netlify-build.sh` e publicar também a Function
+Node.js definida em `netlify.toml`. Conecte o repositório ao Netlify, configure
+as variáveis de ambiente e deixe o build do Git gerar
+`flutter_app/build/web`.
 
 ## Validação automatizada
 

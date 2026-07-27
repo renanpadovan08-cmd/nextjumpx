@@ -34,7 +34,7 @@ class NextJumpXLandingScreen extends StatelessWidget {
             SafeArea(
               child: Center(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1060),
+                  constraints: const BoxConstraints(maxWidth: 830),
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.fromLTRB(24, 36, 24, 30),
                     child: Column(

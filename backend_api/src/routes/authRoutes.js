@@ -7,4 +7,5 @@ router.post('/auth/login', asyncHandler(controller.login));
 router.post('/auth/signup', asyncHandler(controller.signup));
 router.get('/auth/me', requireAuth, asyncHandler(controller.me));
 router.post('/auth/change-password', requireAuth, asyncHandler(controller.changePassword));
+router.post('/auth/accept-terms', requireAuth, asyncHandler(controller.acceptTerms));
 export default router;

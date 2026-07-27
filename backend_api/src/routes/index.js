@@ -11,8 +11,10 @@ import publicRoutes from './publicRoutes.js';
 import fixedClientRoutes from './fixedClientRoutes.js';
 import operationsRoutes from './operationsRoutes.js';
 import uploadRoutes from './uploadRoutes.js';
+import supportRoutes from './supportRoutes.js';
+import updatesRoutes from './updatesRoutes.js';
 
 const router = Router();
 router.get('/status', (_req, res) => res.json({ status: 'ok' }));
-router.use(publicRoutes, authRoutes, barberRoutes, catalogRoutes, appointmentRoutes, dashboardRoutes, adminRoutes, businessRoutes, unitRoutes, fixedClientRoutes, operationsRoutes, uploadRoutes);
+router.use(publicRoutes, authRoutes, barberRoutes, catalogRoutes, appointmentRoutes, dashboardRoutes, adminRoutes, businessRoutes, unitRoutes, fixedClientRoutes, operationsRoutes, uploadRoutes, supportRoutes, updatesRoutes);
 export default router;

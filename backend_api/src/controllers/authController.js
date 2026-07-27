@@ -1,12 +1,40 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { supabase, one, query } from '../services/supabaseService.js';
 import { sanitizeBarber } from '../services/accessService.js';
-import { legacyHashPrefix, legacyPasswordHash } from '../services/passwordPolicy.js';
+import {
+  legacyHashPrefix,
+  legacyPasswordHash,
+  loginLookupValues,
+  normalizeLogin,
+} from '../services/passwordPolicy.js';
 import { HttpError } from '../utils/httpError.js';
 
-const safeColumns = 'id,name,login,phone,shop_name,shop_id,role,photo_url,background_url,work_start,work_end,lunch_start,lunch_end,off_days,commission_rate,access_status,expires_at,created_at,activation_note,must_change_password';
+const safeColumns = 'id,name,login,phone,shop_name,shop_id,role,photo_url,background_url,work_start,work_end,lunch_start,lunch_end,off_days,commission_rate,access_status,expires_at,created_at,activation_note,must_change_password,accepted_terms,accepted_terms_at,accepted_terms_version';
+export const currentTermsVersion = 'v1.0';
+
+async function findBarberByLogin(inputLogin) {
+  const normalized = normalizeLogin(inputLogin);
+  const values = loginLookupValues(inputLogin);
+  const rows = await query(
+    supabase.from('barbers').select('*').in('login', values).limit(10),
+  );
+  const exact = (rows || []).find(
+    (row) => normalizeLogin(row.login) === normalized,
+  );
+  if (exact) return exact;
+
+  // Compatibilidade com cadastros antigos que preservaram maiúsculas.
+  const caseInsensitive = await query(
+    supabase.from('barbers').select('*').ilike('login', String(inputLogin).trim()).limit(10),
+  );
+  const candidate = (caseInsensitive || []).find(
+    (row) => normalizeLogin(row.login) === normalized,
+  );
+  if (!candidate) throw new HttpError(404, 'Login ou senha invalidos');
+  return candidate;
+}
 
 function tokenFor(barber) {
   return jwt.sign({
@@ -22,10 +50,10 @@ function tokenFor(barber) {
 export async function login(req, res) {
   const { login: inputLogin, password } = req.body;
   if (!inputLogin || !password) throw new HttpError(400, 'Informe login e senha');
-  const barber = await one(supabase.from('barbers').select('*').eq('login', inputLogin.trim()).limit(1), 'Login ou senha invalidos');
-  if (!['ativo', 'active'].includes(barber.access_status)) throw new HttpError(403, 'Acesso pendente, bloqueado ou expirado');
-  if (barber.expires_at && /^\d{4}-\d{2}-\d{2}$/.test(barber.expires_at) && barber.expires_at < new Date().toISOString().slice(0, 10)) {
-    throw new HttpError(403, 'Acesso expirado. Fale com o administrador.');
+  const barber = await findBarberByLogin(inputLogin);
+  const accessStatus = String(barber.access_status || 'ativo').toLowerCase();
+  if (!['ativo', 'active'].includes(accessStatus)) {
+    throw new HttpError(403, 'Acesso pendente ou bloqueado');
   }
   const storedHash = String(barber.password_hash || '');
   const bcryptMatches = storedHash.startsWith('$2')
@@ -84,4 +112,18 @@ export async function changePassword(req, res) {
     }).eq('id', req.user.id),
   );
   res.status(204).end();
+}
+
+export async function acceptTerms(req, res) {
+  if (req.body?.accepted !== true || req.body?.responsibilityConfirmed !== true) {
+    throw new HttpError(400, 'Confirme as duas declarações para continuar');
+  }
+  const updated = await query(
+    supabase.from('barbers').update({
+      accepted_terms: true,
+      accepted_terms_at: new Date().toISOString(),
+      accepted_terms_version: currentTermsVersion,
+    }).eq('id', req.user.id).select(safeColumns).single(),
+  );
+  res.json(sanitizeBarber(updated));
 }
