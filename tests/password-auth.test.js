@@ -6,7 +6,7 @@ const vm = require("node:vm");
 const {TextEncoder} = require("node:util");
 const {webcrypto} = require("node:crypto");
 
-const coreSource = fs.readFileSync(path.join(__dirname,"..","js","core.js"),"utf8");
+const coreSource = fs.readFileSync(path.join(__dirname,"..","zenbarber","js","core.js"),"utf8");
 
 function createCoreContext({bcryptCompare} = {}){
   const listeners = new Map();

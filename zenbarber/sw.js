@@ -1,24 +1,25 @@
-const CACHE_NAME = 'zenbarber-autonomia-barbeiro-v1';
+const CACHE_NAME = 'zenbarber-monorepo-v2';
 const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/css/style.css',
-  '/js/core.js',
-  '/js/bootstrap.js',
-  '/js/modules/auth.js',
-  '/js/modules/dashboard.js',
-  '/js/modules/components.js',
-  '/js/modules/cadastros.js',
-  '/js/modules/agenda.js',
-  '/js/modules/clientesFixos.js',
-  '/js/modules/relatorios.js',
-  '/js/modules/admin.js',
-  '/js/modules/agendamentoPublico.js',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png',
-  '/icon-maskable-512.png'
-];
+  './',
+  'index.html',
+  'css/style.css',
+  'js/core.js',
+  'js/bootstrap.js',
+  'js/modules/auth.js',
+  'js/modules/dashboard.js',
+  'js/modules/components.js',
+  'js/modules/cadastros.js',
+  'js/modules/agenda.js',
+  'js/modules/clientesFixos.js',
+  'js/modules/relatorios.js',
+  'js/modules/admin.js',
+  'js/modules/meuNegocio.js',
+  'js/modules/agendamentoPublico.js',
+  'manifest.json',
+  'icon-192.png',
+  'icon-512.png',
+  'icon-maskable-512.png'
+].map((path) => new URL(path, self.registration.scope).toString());
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -50,7 +51,7 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
           return response;
         })
-        .catch(() => caches.match(request).then((cached) => cached || caches.match('/index.html')))
+        .catch(() => caches.match(request).then((cached) => cached || caches.match(APP_SHELL[1])))
     );
     return;
   }
