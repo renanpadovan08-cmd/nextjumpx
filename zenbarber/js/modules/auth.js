@@ -19,7 +19,7 @@ async function route(){
 
 function renderLogin(){
   root.innerHTML = `<div class="page"><div class="loginWrap cleanLogin">
-    <div class="loginCard welcomeCard"><div class="brand bigBrand"><div class="logo officialLogo"><img src="/nextjumpx-symbol.png" alt="NextJumpX"></div><div><h1><span>ZenBarber</span> <span class="proGoldBadge">PRO</span></h1><p class="muted">Powered by NextJumpX</p></div></div><h2>Organize sua barbearia em um só lugar.</h2><p class="muted">Agenda, serviços, barbeiros, carteira, link público e WhatsApp integrados.</p><div class="featureList"><span>✅ Link para clientes</span><span>✅ Agenda por barbeiro</span><span>✅ Bloqueio por duração do serviço</span></div></div>
+    <div class="loginCard welcomeCard"><div class="brand bigBrand"><div class="logo officialLogo"><img src="nextjumpx-symbol.png" alt="NextJumpX"></div><div><h1><span>ZenBarber</span> <span class="proGoldBadge">PRO</span></h1><p class="muted">Powered by NextJumpX</p></div></div><h2>Organize sua barbearia em um só lugar.</h2><p class="muted">Agenda, serviços, barbeiros, carteira, link público e WhatsApp integrados.</p><div class="featureList"><span>✅ Link para clientes</span><span>✅ Agenda por barbeiro</span><span>✅ Bloqueio por duração do serviço</span></div></div>
     <div class="loginCard"><h2>Entrar</h2><form id="loginForm" class="form" onsubmit="event.preventDefault(); doLogin();"><input id="login" placeholder="Login" autocomplete="username"><input id="pass" type="password" placeholder="Senha" autocomplete="current-password"><button id="loginBtn" class="primary" type="submit">Entrar</button><button type="button" onclick="showCreate()">Criar conta de barbearia</button></form><div class="loginPowered">Powered by NextJumpX</div></div>
   </div></div>`;
 }

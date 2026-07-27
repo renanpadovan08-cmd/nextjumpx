@@ -117,10 +117,25 @@ async function migrateLegacyPasswordIfNeeded(user, plainPassword){
 }
 async function verifyBarberPassword(user, plainPassword){
   if(!user) return false;
-  if(user.password_hash){
-    const expected = await makePasswordHash(user.login, plainPassword);
-    return user.password_hash === expected;
+  const passwordHash = String(user.password_hash||"");
+  if(passwordHash.startsWith("$2")){
+    const bcryptApi = window.bcrypt || window.dcodeIO?.bcrypt;
+    if(!bcryptApi) {
+      console.error("ZenBarber: biblioteca BCrypt indisponível.");
+      return false;
+    }
+    try{
+      return await bcryptApi.compare(String(plainPassword||""), passwordHash);
+    }catch(error){
+      console.error("ZenBarber: erro ao verificar senha BCrypt.", error);
+      return false;
+    }
   }
+  if(passwordHash.startsWith(PASSWORD_HASH_PREFIX)){
+    const expected = await makePasswordHash(user.login, plainPassword);
+    return passwordHash === expected;
+  }
+  if(passwordHash) return false;
   return String(user.password||"") === String(plainPassword||"");
 }
 
@@ -351,7 +366,7 @@ function termsTextByRole(){
 function renderTermsAcceptance(){
   const t = termsTextByRole();
   root.innerHTML = `<div class="page termsGatePage"><div class="termsGateCard">
-    <div class="brand bigBrand"><div class="logo officialLogo"><img src="/nextjumpx-symbol.png" alt="NextJumpX"></div><div><h1><span>ZenBarber</span> <span class="proGoldBadge">PRO</span></h1><p class="muted">Powered by NextJumpX • Aceite obrigatório • ${esc(ZEN_TERMS_VERSION)}</p></div></div>
+    <div class="brand bigBrand"><div class="logo officialLogo"><img src="nextjumpx-symbol.png" alt="NextJumpX"></div><div><h1><span>ZenBarber</span> <span class="proGoldBadge">PRO</span></h1><p class="muted">Powered by NextJumpX • Aceite obrigatório • ${esc(ZEN_TERMS_VERSION)}</p></div></div>
     <h2>${esc(t.title)}</h2>
     <p class="muted">${esc(t.intro)}</p>
     <div class="termsBox">${t.items.map(i=>`<p>• ${esc(i)}</p>`).join("")}</div>

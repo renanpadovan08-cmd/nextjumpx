@@ -16,7 +16,7 @@ function supportSetTitle(){
 }
 function supportBrowserNotify(){
   if(!supportCanNotify() || Notification.permission !== 'granted') return;
-  try{ new Notification('Nova mensagem de suporte', { body:'Você recebeu uma nova mensagem no suporte do ZenBarber.', icon:'/icon-192.png' }); }catch(e){}
+  try{ new Notification('Nova mensagem de suporte', { body:'Você recebeu uma nova mensagem no suporte do ZenBarber.', icon:'icon-192.png' }); }catch(e){}
 }
 async function supportAskNotificationPermission(){
   if(!supportCanNotify()) return toast('Este navegador não suporta notificações.');

@@ -2,27 +2,27 @@
   "name": "ZenBarber - Sistema para Barbearias",
   "short_name": "ZenBarber",
   "description": "Sistema de agenda, clientes e financeiro para barbearias.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#0d0d10",
   "theme_color": "#0d0d10",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-512.png",
+      "src": "icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon-maskable-512.png",
+      "src": "icon-maskable-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
@@ -45,10 +45,10 @@
       "name": "Abrir ZenBarber",
       "short_name": "Início",
       "description": "Abrir o sistema ZenBarber",
-      "url": "/",
+      "url": "./",
       "icons": [
         {
-          "src": "/icon-192.png",
+          "src": "icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }
@@ -58,10 +58,10 @@
       "name": "Agenda",
       "short_name": "Agenda",
       "description": "Abrir o ZenBarber na agenda",
-      "url": "/#agenda",
+      "url": "./#agenda",
       "icons": [
         {
-          "src": "/icon-192.png",
+          "src": "icon-192.png",
           "sizes": "192x192",
           "type": "image/png"
         }
