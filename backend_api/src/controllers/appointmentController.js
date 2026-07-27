@@ -1,5 +1,6 @@
 import { supabase, one, query } from '../services/supabaseService.js';
 import { assertShopAccess } from '../services/accessService.js';
+import { intervalsOverlap, validateSlot } from '../services/schedulePolicy.js';
 import { HttpError } from '../utils/httpError.js';
 
 const activeStatuses = ['agendado', 'em_carteira', 'encaixe', 'em_andamento', 'bloqueio'];
@@ -11,23 +12,21 @@ async function ensureBarberAccess(user, barberId) {
   return barber;
 }
 
-const toMinutes = (value) => {
-  const [hours, minutes] = String(value || '').split(':').map(Number);
-  return (hours * 60) + minutes;
-};
-
 async function assertNoConflict({ barberId, date, time, serviceId, ignoreId, allowFitIn = false }) {
+  const service = await one(
+    supabase.from('services').select('id,duration').eq('id', serviceId).eq('barber_id', barberId),
+    'Servico nao encontrado para esse profissional',
+  );
+  const barber = await one(
+    supabase.from('barbers').select('id,work_start,work_end,off_days').eq('id', barberId),
+    'Barbeiro nao encontrado',
+  );
+  const slotError = validateSlot({ barber, date, time, duration: service.duration });
+  if (slotError) throw new HttpError(400, slotError);
   if (allowFitIn) return;
-  const service = await one(supabase.from('services').select('id,duration').eq('id', serviceId), 'Servico nao encontrado');
   const rows = await query(supabase.from('appointments').select('id,time,service_id,services(duration)').eq('barber_id', barberId).eq('date', date).in('status', activeStatuses));
-  const start = toMinutes(time);
-  const end = start + Number(service.duration || 30);
-  const collision = rows.some((row) => {
-    if (row.id === ignoreId) return false;
-    const rowStart = toMinutes(row.time);
-    const rowEnd = rowStart + Number(row.services?.duration || 30);
-    return start < rowEnd && end > rowStart;
-  });
+  const collision = rows.some((row) => row.id !== ignoreId
+    && intervalsOverlap(time, service.duration, row.time, row.services?.duration || 30));
   if (collision) throw new HttpError(409, 'Esse horário acabou de ser ocupado');
 }
 
@@ -36,7 +35,16 @@ export async function listAppointments(req, res) {
   const barber = barberId ? await ensureBarberAccess(req.user, barberId) : null;
   let builder = supabase.from('appointments').select('*,services(name,price,duration),barbers(name,shop_name)').order('date').order('time');
   if (barber) builder = builder.eq('barber_id', barber.id);
-  else if (req.user.role !== 'admin') builder = builder.eq('barbers.shop_name', req.user.shopName);
+  else if (req.user.role !== 'admin') {
+    const shopBarbers = await query(
+      supabase.from('barbers').select('id').eq('shop_name', req.user.shopName),
+    );
+    if (!shopBarbers.length) {
+      res.json([]);
+      return;
+    }
+    builder = builder.in('barber_id', shopBarbers.map((item) => item.id));
+  }
   if (req.query.date) builder = builder.eq('date', req.query.date);
   res.json(await query(builder));
 }
@@ -44,6 +52,7 @@ export async function listAppointments(req, res) {
 export async function availability(req, res) {
   const { barberId, date } = req.query;
   if (!barberId || !date) throw new HttpError(400, 'barberId e date sao obrigatorios');
+  await ensureBarberAccess(req.user, barberId);
   const appointments = await query(supabase.from('appointments').select('id,time,status,service_id,services(duration)').eq('barber_id', barberId).eq('date', date).in('status', activeStatuses));
   res.json(appointments);
 }

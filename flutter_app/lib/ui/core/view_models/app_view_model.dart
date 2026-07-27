@@ -18,30 +18,86 @@ class AppViewModel extends ChangeNotifier {
     final token = prefs.getString('token');
     if (token != null) {
       _api.setToken(token);
-      try { user = await _authRepository.me(); } catch (_) { await prefs.remove('token'); _api.setToken(null); }
+      try {
+        user = await _authRepository.me();
+      } catch (_) {
+        await prefs.remove('token');
+        _api.setToken(null);
+      }
     }
     loading = false;
     notifyListeners();
   }
 
   Future<bool> login(String login, String password) async {
-    error = null; loading = true; notifyListeners();
+    error = null;
+    loading = true;
+    notifyListeners();
     try {
       final result = await _authRepository.login(login, password);
       _api.setToken(result.token);
-      await (await SharedPreferences.getInstance()).setString('token', result.token);
+      await (await SharedPreferences.getInstance())
+          .setString('token', result.token);
       user = result.user;
       return true;
-    } on ApiException catch (exception) { error = exception.message; return false; }
-    finally { loading = false; notifyListeners(); }
+    } on ApiException catch (exception) {
+      error = exception.message;
+      return false;
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
   }
 
-  Future<bool> signup({required String name,required String login,required String password,required String phone,required String shopName}) async {
-    error=null; loading=true; notifyListeners();
-    try { await _authRepository.signup(name:name,login:login,password:password,phone:phone,shopName:shopName); return true; }
-    on ApiException catch(exception) { error=exception.message; return false; }
-    finally { loading=false; notifyListeners(); }
+  Future<bool> signup(
+      {required String name,
+      required String login,
+      required String password,
+      required String phone,
+      required String shopName,
+      required String plan}) async {
+    error = null;
+    loading = true;
+    notifyListeners();
+    try {
+      await _authRepository.signup(
+          name: name,
+          login: login,
+          password: password,
+          phone: phone,
+          shopName: shopName,
+          plan: plan);
+      return true;
+    } on ApiException catch (exception) {
+      error = exception.message;
+      return false;
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
   }
 
-  Future<void> logout() async { _api.setToken(null); await (await SharedPreferences.getInstance()).remove('token'); user = null; notifyListeners(); }
+  Future<void> logout() async {
+    _api.setToken(null);
+    await (await SharedPreferences.getInstance()).remove('token');
+    user = null;
+    notifyListeners();
+  }
+
+  Future<bool> changePassword(String password) async {
+    error = null;
+    loading = true;
+    notifyListeners();
+    try {
+      await _authRepository.changePassword(password);
+      user = await _authRepository.me();
+      return true;
+    } on ApiException catch (exception) {
+      error = exception.message;
+      return false;
+    } finally {
+      loading = false;
+      notifyListeners();
+    }
+  }
 }

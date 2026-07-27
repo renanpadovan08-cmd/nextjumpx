@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../config/app_config.dart';
 import '../core/theme/zen_colors.dart';
 import '../core/widgets/zen_card.dart';
 import 'view_models/pro_module_view_model.dart';
@@ -31,9 +35,10 @@ class ProModuleScreen extends StatefulWidget {
 }
 
 class _ProModuleScreenState extends State<ProModuleScreen> {
-  final Set<String> _completed = {};
   final Map<String, String> _commissionInputs = {};
   final Map<String, String> _currentInputs = {};
+  String _activeFilter = 'Todos';
+  List<Map<String, dynamic>>? _weeklySchedule;
 
   @override
   void initState() {
@@ -171,7 +176,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                           _money(row['received_amount'] ??
                               row['services']?['price']))),
                   const SizedBox(width: 16),
-                  _walletActions('${row['id']}')
+                  _walletActions(row)
                 ])
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -182,7 +187,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                           _money(row['received_amount'] ??
                               row['services']?['price'])),
                       const SizedBox(height: 13),
-                      _walletActions('${row['id']}')
+                      _walletActions(row)
                     ]),
         ),
       );
@@ -204,29 +209,61 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
         ]
       ]);
 
-  Widget _walletActions(String key) => SizedBox(
+  Widget _walletActions(Map<String, dynamic> row) => SizedBox(
       width: 360,
       child: Wrap(
           spacing: 8,
           runSpacing: 8,
           alignment: WrapAlignment.end,
           children: [
-            _action('Cobrar no WhatsApp',
-                () => _message('Mensagem de cobrança preparada.')),
-            _action('Marcar recebido',
-                () => _operation(ProModule.wallet, key, {'action': 'received'}),
+            _action('Cobrar no WhatsApp', () => _copyWhats(row, 'charge')),
+            _action(
+                'Marcar recebido',
+                () => _operation(
+                    ProModule.wallet, '${row['id']}', {'action': 'received'}),
                 green: true),
             _action(
-                'Valor a receber', () => _message('Valor pronto para ajuste.'),
+                'Bonificar',
+                () => _operation(
+                    ProModule.wallet, '${row['id']}', {'action': 'bonify'}),
                 gold: true),
-            _action('Bonificar',
-                () => _operation(ProModule.wallet, key, {'action': 'bonify'}),
-                gold: true),
-            _action('Cancelar cobrança',
-                () => _operation(ProModule.wallet, key, {'action': 'cancel'}),
+            _action(
+                'Cancelar cobrança',
+                () => _operation(
+                    ProModule.wallet, '${row['id']}', {'action': 'cancel'}),
                 danger: true),
-            _action('Corrigir valor', () => _message('Editor de valor aberto.'))
+            _action('Corrigir valor', () => _adjustWallet(row))
           ]));
+
+  Future<void> _adjustWallet(Map<String, dynamic> row) async {
+    final amount = TextEditingController(
+      text: '${row['received_amount'] ?? row['services']?['price'] ?? 0}',
+    );
+    final value = await showDialog<double>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Corrigir valor a receber'),
+        content: TextField(
+          controller: amount,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Novo valor'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, double.tryParse(amount.text)),
+              child: const Text('Salvar')),
+        ],
+      ),
+    );
+    amount.dispose();
+    if (value == null || value < 0) return;
+    await _operation(ProModule.wallet, '${row['id']}',
+        {'action': 'adjust', 'amount': value});
+  }
 
   Future<void> _operation(
       ProModule module, String id, Map<String, dynamic> body) async {
@@ -239,17 +276,66 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
   }
 
   Widget _whatsapp() {
-    final today = List<Map<String, dynamic>>.from((_object['today'] as List?) ?? const []);
-    final wallet = List<Map<String, dynamic>>.from((_object['wallet'] as List?) ?? const []);
-    return _surface('Central WhatsApp do dia', 'Mensagens prontas para confirmar, reagendar e cobrar, usando os dados reais da agenda.', [
-      _filterBar(['Hoje', 'Confirmações', 'Atrasos', 'Cobranças']),
-      if (today.isEmpty && wallet.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Nenhuma ação de WhatsApp pendente hoje.', style: TextStyle(color: ZenColors.muted))),
-      ...today.map((row) => _whatsappRow(row, false)),
-      ...wallet.map((row) => _whatsappRow(row, true)),
-    ]);
+    final today = List<Map<String, dynamic>>.from(
+        (_object['today'] as List?) ?? const []);
+    final wallet = List<Map<String, dynamic>>.from(
+        (_object['wallet'] as List?) ?? const []);
+    final visibleToday =
+        _activeFilter == 'Cobranças' ? <Map<String, dynamic>>[] : today;
+    final visibleWallet =
+        _activeFilter == 'Confirmações' ? <Map<String, dynamic>>[] : wallet;
+    return _surface(
+        'Central WhatsApp do dia',
+        'Mensagens prontas para confirmar, reagendar e cobrar, usando os dados reais da agenda.',
+        [
+          _filterBar(['Todos', 'Confirmações', 'Cobranças']),
+          if (visibleToday.isEmpty && visibleWallet.isEmpty)
+            const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Nenhuma ação de WhatsApp pendente hoje.',
+                    style: TextStyle(color: ZenColors.muted))),
+          ...visibleToday.map((row) => _whatsappRow(row, false)),
+          ...visibleWallet.map((row) => _whatsappRow(row, true)),
+        ]);
   }
 
-  Widget _whatsappRow(Map<String, dynamic> row, bool charge) => Container(margin: const EdgeInsets.only(top: 10), padding: const EdgeInsets.all(14), decoration: _inset(), child: LayoutBuilder(builder: (context, box) => box.maxWidth > 630 ? Row(children: [Expanded(child: _walletText('${charge ? 'Cobrança' : row['time'] ?? '--:--'} • ${row['client_name'] ?? 'Cliente'}', '${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''} • ${row['client_phone'] ?? 'sem telefone'}', '')), const SizedBox(width: 10), Wrap(spacing: 7, runSpacing: 7, children: [_action(charge ? 'Cobrar' : 'Confirmar', () => _copyWhats(row, charge ? 'charge' : 'confirm'), green: true), _action('Reagendar', () => _copyWhats(row, 'reschedule')), _action('Copiar', () => _copyWhats(row, charge ? 'charge' : 'confirm'))])]) : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [_walletText('${charge ? 'Cobrança' : row['time'] ?? '--:--'} • ${row['client_name'] ?? 'Cliente'}', '${row['services']?['name'] ?? 'Serviço'} • ${row['client_phone'] ?? 'sem telefone'}', ''), const SizedBox(height: 10), Wrap(spacing: 7, runSpacing: 7, children: [_action(charge ? 'Cobrar' : 'Confirmar', () => _copyWhats(row, charge ? 'charge' : 'confirm'), green: true), _action('Reagendar', () => _copyWhats(row, 'reschedule')), _action('Copiar', () => _copyWhats(row, charge ? 'charge' : 'confirm'))])])));
+  Widget _whatsappRow(Map<String, dynamic> row, bool charge) => Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: _inset(),
+      child: LayoutBuilder(
+          builder: (context, box) => box.maxWidth > 630
+              ? Row(children: [
+                  Expanded(
+                      child: _walletText(
+                          '${charge ? 'Cobrança' : row['time'] ?? '--:--'} • ${row['client_name'] ?? 'Cliente'}',
+                          '${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''} • ${row['client_phone'] ?? 'sem telefone'}',
+                          '')),
+                  const SizedBox(width: 10),
+                  Wrap(spacing: 7, runSpacing: 7, children: [
+                    _action(charge ? 'Cobrar' : 'Confirmar',
+                        () => _copyWhats(row, charge ? 'charge' : 'confirm'),
+                        green: true),
+                    _action('Reagendar', () => _copyWhats(row, 'reschedule')),
+                    _action('Copiar',
+                        () => _copyWhats(row, charge ? 'charge' : 'confirm'))
+                  ])
+                ])
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _walletText(
+                      '${charge ? 'Cobrança' : row['time'] ?? '--:--'} • ${row['client_name'] ?? 'Cliente'}',
+                      '${row['services']?['name'] ?? 'Serviço'} • ${row['client_phone'] ?? 'sem telefone'}',
+                      ''),
+                  const SizedBox(height: 10),
+                  Wrap(spacing: 7, runSpacing: 7, children: [
+                    _action(charge ? 'Cobrar' : 'Confirmar',
+                        () => _copyWhats(row, charge ? 'charge' : 'confirm'),
+                        green: true),
+                    _action('Reagendar', () => _copyWhats(row, 'reschedule')),
+                    _action('Copiar',
+                        () => _copyWhats(row, charge ? 'charge' : 'confirm'))
+                  ])
+                ])));
 
   Future<void> _copyWhats(Map<String, dynamic> row, String type) async {
     final name = '${row['client_name'] ?? 'cliente'}'.split(' ').first;
@@ -257,26 +343,43 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     final time = '${row['time'] ?? ''}';
     final service = '${row['services']?['name'] ?? 'serviço'}';
     final message = switch (type) {
-      'charge' => 'Olá $name, tudo bem? Passando para lembrar do valor de ${_money(row['received_amount'] ?? row['services']?['price'])} referente ao $service na $shop.',
-      'reschedule' => 'Olá $name, tudo bem? Precisamos ajustar seu horário na $shop. Me chama por aqui para remarcarmos o melhor horário.',
-      _ => 'Olá $name, tudo bem? Passando para confirmar seu horário na $shop hoje às $time. Posso confirmar?',
+      'charge' =>
+        'Olá $name, tudo bem? Passando para lembrar do valor de ${_money(row['received_amount'] ?? row['services']?['price'])} referente ao $service na $shop.',
+      'reschedule' =>
+        'Olá $name, tudo bem? Precisamos ajustar seu horário na $shop. Me chama por aqui para remarcarmos o melhor horário.',
+      'retention' =>
+        'Olá $name, tudo bem? Sentimos sua falta na $shop. Que tal reservar seu próximo $service? Me chama por aqui e encontramos o melhor horário para você.',
+      _ =>
+        'Olá $name, tudo bem? Passando para confirmar seu horário na $shop hoje às $time. Posso confirmar?',
     };
     await Clipboard.setData(ClipboardData(text: message));
-    if (mounted) _message('Mensagem copiada. Abra o WhatsApp e envie para o cliente.');
+    if (mounted) {
+      _message('Mensagem copiada. Abra o WhatsApp e envie para o cliente.');
+    }
+  }
+
+  List<Map<String, dynamic>> get _visiblePending {
+    final now = DateTime.now();
+    return _rows.where((row) {
+      final date = DateTime.tryParse('${row['date']}');
+      if (date == null || _activeFilter == 'Todos') return true;
+      final days = now.difference(date).inDays;
+      return _activeFilter == 'Últimos 7 dias' ? days <= 7 : days > 7;
+    }).toList();
   }
 
   Widget _pending() => _surface(
           'Atendimentos pendentes de baixa',
           'Confirme o que aconteceu com cada horário passado antes de fechar o dia.',
           [
-            _filterBar(['Hoje', 'Últimos 7 dias', 'Todos os pendentes']),
-            if (_rows.isEmpty)
+            _filterBar(['Todos', 'Últimos 7 dias', 'Mais antigos']),
+            if (_visiblePending.isEmpty)
               const Padding(
                   padding: EdgeInsets.all(16),
                   child: Text('Nenhum atendimento pendente de baixa.',
                       style: TextStyle(color: ZenColors.muted)))
             else
-              ..._rows.map(_pendingRow),
+              ..._visiblePending.map(_pendingRow),
           ]);
 
   Widget _pendingRow(Map<String, dynamic> row) => Container(
@@ -389,27 +492,114 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
               child: Text('Nenhum cliente em risco no momento.',
                   style: TextStyle(color: ZenColors.muted)))
         else
-          ...risk.map((row) => _command(
-              '${row['client_name'] ?? 'Cliente'}',
-              'Último atendimento há ${row['daysAway'] ?? 0} dias • ${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''}',
-              ['Chamar no WhatsApp', 'Marcar recuperado'])),
+          ...risk.map(_retentionRow),
       ]),
     ]);
   }
 
+  Widget _retentionRow(Map<String, dynamic> row) => Container(
+        margin: const EdgeInsets.only(top: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: _inset(),
+        child: Row(
+          children: [
+            Expanded(
+              child: _walletText(
+                '${row['client_name'] ?? 'Cliente'}',
+                'Último atendimento há ${row['daysAway'] ?? 0} dias • ${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''}',
+                '',
+              ),
+            ),
+            const SizedBox(width: 10),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                _action(
+                    'Chamar no WhatsApp', () => _retentionAction(row, false)),
+                _action('Marcar recuperado', () => _retentionAction(row, true),
+                    green: true),
+              ],
+            ),
+          ],
+        ),
+      );
+
+  Future<void> _retentionAction(
+      Map<String, dynamic> row, bool recovered) async {
+    if (!recovered) await _copyWhats(row, 'retention');
+    final ok = await widget.viewModel.createRetentionAction({
+      'clientKey': row['clientKey'],
+      'clientName': row['client_name'],
+      'clientPhone': row['client_phone'],
+      'action': recovered ? 'recovered' : 'contacted',
+      'daysAway': row['daysAway'],
+      'barberId': row['barber_id'],
+    });
+    if (mounted) {
+      _message(ok
+          ? recovered
+              ? 'Cliente marcado como recuperado.'
+              : 'Contato de retenção registrado.'
+          : 'Não foi possível registrar a ação.');
+    }
+  }
+
   Widget _reports() {
-    final ordered = [..._rows]..sort((a, b) => ((b['gross'] as num?) ?? 0).compareTo((a['gross'] as num?) ?? 0));
-    final gross = ordered.fold<num>(0, (sum, row) => sum + ((row['gross'] as num?) ?? 0));
-    final commissions = ordered.fold<num>(0, (sum, row) => sum + ((row['commission'] as num?) ?? 0));
+    final ordered = [..._rows]..sort((a, b) =>
+        ((b['gross'] as num?) ?? 0).compareTo((a['gross'] as num?) ?? 0));
+    final gross =
+        ordered.fold<num>(0, (sum, row) => sum + ((row['gross'] as num?) ?? 0));
+    final commissions = ordered.fold<num>(
+        0, (sum, row) => sum + ((row['commission'] as num?) ?? 0));
     return Column(children: [
-      _surface('Ranking de barbeiros', 'Faturamento, atendimentos e comissão do mês selecionado.', [
-        if (ordered.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Ainda não há resultados no período.', style: TextStyle(color: ZenColors.muted))) else ...ordered.take(5).toList().asMap().entries.map((entry) => _rankingRow('#${entry.key + 1}', '${entry.value['name'] ?? 'Barbeiro'}', '${entry.value['appointments'] ?? 0} atendimento(s)', _money(entry.value['gross']), entry.key == 0 ? const Color(0xffe4bd52) : ZenColors.muted)),
+      _surface('Ranking de barbeiros',
+          'Faturamento, atendimentos e comissão do mês selecionado.', [
+        if (ordered.isEmpty)
+          const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Ainda não há resultados no período.',
+                  style: TextStyle(color: ZenColors.muted)))
+        else
+          ...ordered.take(5).toList().asMap().entries.map((entry) =>
+              _rankingRow(
+                  '#${entry.key + 1}',
+                  '${entry.value['name'] ?? 'Barbeiro'}',
+                  '${entry.value['appointments'] ?? 0} atendimento(s)',
+                  _money(entry.value['gross']),
+                  entry.key == 0 ? const Color(0xffe4bd52) : ZenColors.muted)),
       ]),
       const SizedBox(height: 16),
-      _surface('Resumo financeiro', 'Resultados consolidados da operação no mês atual.', [
-        Wrap(spacing: 20, runSpacing: 16, children: [_miniValue('Faturamento', _money(gross)), _miniValue('Comissão', _money(commissions)), _miniValue('Lucro', _money(gross - commissions))]),
+      _surface('Resumo financeiro',
+          'Resultados consolidados da operação no mês atual.', [
+        Wrap(spacing: 20, runSpacing: 16, children: [
+          _miniValue('Faturamento', _money(gross)),
+          _miniValue('Comissão', _money(commissions)),
+          _miniValue('Lucro', _money(gross - commissions))
+        ]),
+        const SizedBox(height: 14),
+        Align(
+          alignment: Alignment.centerRight,
+          child: _action('Copiar relatório CSV', _copyReportCsv),
+        ),
       ]),
     ]);
+  }
+
+  Future<void> _copyReportCsv() async {
+    final lines = <String>[
+      'profissional;atendimentos;faturamento;comissao;lucro',
+      for (final row in _rows)
+        [
+          '${row['name'] ?? ''}'.replaceAll(';', ','),
+          '${row['appointments'] ?? 0}',
+          '${row['gross'] ?? 0}',
+          '${row['commission'] ?? 0}',
+          '${row['profit'] ?? 0}',
+        ].join(';'),
+    ];
+    await Clipboard.setData(ClipboardData(text: lines.join('\n')));
+    if (mounted) _message('Relatório CSV copiado.');
   }
 
   Widget _cash() => _surface('Controle de caixa',
@@ -421,63 +611,354 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           _metric('Saldo', _money(_object['balance']), ZenColors.sky)
         ]),
         const SizedBox(height: 15),
-        ...List<Map<String,dynamic>>.from((_object['manual'] as List?)??const[]).map((entry)=>_command('${entry['type']=='entrada'?'Entrada':'Saída'} • ${entry['description']??''}','${entry['entry_date']??''} • ${_money(entry['amount'])}',['Ver lançamento'])),
+        ...List<Map<String, dynamic>>.from(
+                (_object['manual'] as List?) ?? const [])
+            .map(_cashEntry),
         const SizedBox(height: 12),
         Align(
             alignment: Alignment.centerRight,
-            child: _action('Adicionar lançamento',_createCashDialog,
+            child: _action('Adicionar lançamento', _createCashDialog,
                 green: true)),
       ]);
 
-  Future<void> _createCashDialog()async{final description=TextEditingController();final amount=TextEditingController();var type='entrada';final data=await showDialog<Map<String,String>>(context:context,builder:(context)=>AlertDialog(title:const Text('Lançamento de caixa'),content:StatefulBuilder(builder:(context,setDialog)=>Column(mainAxisSize:MainAxisSize.min,children:[TextField(controller:description,decoration:const InputDecoration(labelText:'Descrição')),const SizedBox(height:10),TextField(controller:amount,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Valor')),const SizedBox(height:10),DropdownButtonFormField<String>(initialValue:type,items:const[DropdownMenuItem(value:'entrada',child:Text('Entrada')),DropdownMenuItem(value:'saida',child:Text('Saída'))],onChanged:(value)=>setDialog(()=>type=value??type),decoration:const InputDecoration(labelText:'Tipo'))])),actions:[TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancelar')),FilledButton(onPressed:()=>Navigator.pop(context,{'description':description.text.trim(),'amount':amount.text.trim(),'type':type}),child:const Text('Salvar'))]));description.dispose();amount.dispose();if(data==null||data['description']!.isEmpty)return;final ok=await widget.viewModel.createCashEntry({'description':data['description'],'amount':double.tryParse(data['amount']??'')??0,'type':data['type']});if(mounted)_message(ok?'Lançamento registrado.':'Não foi possível registrar o lançamento.');}
+  Widget _cashEntry(Map<String, dynamic> entry) => Container(
+        margin: const EdgeInsets.only(top: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: _inset(),
+        child: Row(
+          children: [
+            Expanded(
+              child: _walletText(
+                '${entry['type'] == 'entrada' ? 'Entrada' : 'Saída'} • ${entry['description'] ?? ''}',
+                '${entry['entry_date'] ?? ''}',
+                _money(entry['amount']),
+              ),
+            ),
+            IconButton(
+              onPressed: () => _deleteCashEntry('${entry['id']}'),
+              icon: const Icon(Icons.delete_outline, color: ZenColors.red),
+              tooltip: 'Excluir lançamento',
+            ),
+          ],
+        ),
+      );
 
-  Widget _profile() => _surface('Perfil da barbearia', 'Informações do profissional autenticado e sua identidade no painel.', [
-        _currentField('name', 'Responsável', '${_object['name'] ?? ''}'),
-        _currentField('phone', 'WhatsApp', '${_object['phone'] ?? ''}'),
-        _currentField('photoUrl', 'URL da foto', '${_object['photo_url'] ?? ''}'),
-        _currentField('backgroundUrl', 'URL do fundo público', '${_object['background_url'] ?? ''}'),
-        const SizedBox(height: 4),
-        Text('Login público: ${_object['login'] ?? ''} • Barbearia: ${_object['shop_name'] ?? ''}', style: const TextStyle(color: ZenColors.muted, fontSize: 12)),
-        const SizedBox(height: 12),
-        Align(alignment: Alignment.centerRight, child: _action('Salvar configurações', () => _saveCurrent(ProModule.profile), green: true)),
-      ]);
+  Future<void> _deleteCashEntry(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir lançamento?'),
+        content: const Text('O saldo será recalculado imediatamente.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Excluir')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final ok = await widget.viewModel.deleteCashEntry(id);
+    if (mounted) {
+      _message(ok
+          ? 'Lançamento excluído.'
+          : 'Não foi possível excluir o lançamento.');
+    }
+  }
 
-  Widget _hours() => _surface('Funcionamento inteligente', 'Defina expediente, pausa e dias fechados; a agenda respeita cada configuração.', [
-        LayoutBuilder(builder: (context, box) => Wrap(spacing: 12, runSpacing: 12, children: [SizedBox(width: box.maxWidth > 600 ? 220 : double.infinity, child: _currentField('workStart', 'Início do expediente', '${_object['work_start'] ?? '09:00'}', time: true)), SizedBox(width: box.maxWidth > 600 ? 220 : double.infinity, child: _currentField('workEnd', 'Fim do expediente', '${_object['work_end'] ?? '19:00'}', time: true)), SizedBox(width: box.maxWidth > 600 ? 220 : double.infinity, child: _currentField('breakStart', 'Início da pausa', '${_object['break_start'] ?? ''}', time: true)), SizedBox(width: box.maxWidth > 600 ? 220 : double.infinity, child: _currentField('breakEnd', 'Fim da pausa', '${_object['break_end'] ?? ''}', time: true))])),
-        const SizedBox(height: 12),
-        _currentField('offDays', 'Dias fechados (0=domingo, 6=sábado; separe por vírgula)', '${_object['off_days'] ?? ''}'),
-        const SizedBox(height: 12),
-        Align(alignment: Alignment.centerRight, child: _action('Salvar funcionamento', () => _saveCurrent(ProModule.hours), green: true)),
-      ]);
+  Future<void> _createCashDialog() async {
+    final description = TextEditingController();
+    final amount = TextEditingController();
+    var type = 'entrada';
+    final data = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('Lançamento de caixa'),
+                content: StatefulBuilder(
+                    builder: (context, setDialog) =>
+                        Column(mainAxisSize: MainAxisSize.min, children: [
+                          TextField(
+                              controller: description,
+                              decoration: const InputDecoration(
+                                  labelText: 'Descrição')),
+                          const SizedBox(height: 10),
+                          TextField(
+                              controller: amount,
+                              keyboardType: TextInputType.number,
+                              decoration:
+                                  const InputDecoration(labelText: 'Valor')),
+                          const SizedBox(height: 10),
+                          DropdownButtonFormField<String>(
+                              initialValue: type,
+                              items: const [
+                                DropdownMenuItem(
+                                    value: 'entrada', child: Text('Entrada')),
+                                DropdownMenuItem(
+                                    value: 'saida', child: Text('Saída'))
+                              ],
+                              onChanged: (value) =>
+                                  setDialog(() => type = value ?? type),
+                              decoration:
+                                  const InputDecoration(labelText: 'Tipo'))
+                        ])),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancelar')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, {
+                            'description': description.text.trim(),
+                            'amount': amount.text.trim(),
+                            'type': type
+                          }),
+                      child: const Text('Salvar'))
+                ]));
+    description.dispose();
+    amount.dispose();
+    if (data == null || data['description']!.isEmpty) return;
+    final ok = await widget.viewModel.createCashEntry({
+      'description': data['description'],
+      'amount': double.tryParse(data['amount'] ?? '') ?? 0,
+      'type': data['type']
+    });
+    if (mounted) {
+      _message(ok
+          ? 'Lançamento registrado.'
+          : 'Não foi possível registrar o lançamento.');
+    }
+  }
 
-  Widget _currentField(String key, String label, String initial, {bool time = false}) => Padding(padding: const EdgeInsets.only(bottom: 10), child: TextFormField(initialValue: _currentInputs[key] ?? initial, keyboardType: time ? TextInputType.datetime : TextInputType.text, onChanged: (value) => _currentInputs[key] = value, decoration: InputDecoration(labelText: label, hintText: time ? 'HH:MM' : null)));
+  Widget _profile() => _surface(
+          'Perfil da barbearia',
+          'Informações do profissional autenticado e sua identidade no painel.',
+          [
+            _currentField('name', 'Responsável', '${_object['name'] ?? ''}'),
+            _currentField('phone', 'WhatsApp', '${_object['phone'] ?? ''}'),
+            _currentField(
+                'photoUrl', 'URL da foto', '${_object['photo_url'] ?? ''}'),
+            _currentField('backgroundUrl', 'URL do fundo público',
+                '${_object['background_url'] ?? ''}'),
+            const SizedBox(height: 4),
+            Text(
+                'Login público: ${_object['login'] ?? ''} • Barbearia: ${_object['shop_name'] ?? ''}',
+                style: const TextStyle(color: ZenColors.muted, fontSize: 12)),
+            const SizedBox(height: 12),
+            Align(
+                alignment: Alignment.centerRight,
+                child: _action('Salvar configurações',
+                    () => _saveCurrent(ProModule.profile),
+                    green: true)),
+          ]);
+
+  Widget _hours() {
+    _weeklySchedule ??= _decodeWeeklySchedule();
+    const names = [
+      'Domingo',
+      'Segunda',
+      'Terça',
+      'Quarta',
+      'Quinta',
+      'Sexta',
+      'Sábado'
+    ];
+    return _surface(
+      'Funcionamento inteligente',
+      'Defina expediente e pausa de cada dia; agenda e link público usam esta configuração.',
+      [
+        for (var index = 0; index < names.length; index++)
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: _inset(),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(names[index],
+                          style: const TextStyle(fontWeight: FontWeight.w900)),
+                    ),
+                    Text(_weeklySchedule![index]['open'] == true
+                        ? 'Aberto'
+                        : 'Fechado'),
+                    Switch(
+                      value: _weeklySchedule![index]['open'] == true,
+                      onChanged: (value) => setState(
+                          () => _weeklySchedule![index]['open'] = value),
+                    ),
+                  ],
+                ),
+                if (_weeklySchedule![index]['open'] == true)
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _scheduleField(index, 'start', 'Início'),
+                      _scheduleField(index, 'end', 'Fim'),
+                      _scheduleField(index, 'break_start', 'Início da pausa'),
+                      _scheduleField(index, 'break_end', 'Fim da pausa'),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        Align(
+          alignment: Alignment.centerRight,
+          child:
+              _action('Salvar funcionamento', _saveWeeklySchedule, green: true),
+        ),
+      ],
+    );
+  }
+
+  List<Map<String, dynamic>> _decodeWeeklySchedule() {
+    final raw = '${_object['off_days'] ?? ''}';
+    final legacyClosed = raw.split(',').map((value) => value.trim()).toSet();
+    List<dynamic>? parsed;
+    if (raw.startsWith('SCHEDULE_JSON:')) {
+      try {
+        final value = jsonDecode(raw.substring('SCHEDULE_JSON:'.length));
+        if (value is List) parsed = value;
+      } catch (_) {
+        parsed = null;
+      }
+    }
+    return List.generate(7, (index) {
+      final current =
+          parsed != null && index < parsed.length && parsed[index] is Map
+              ? Map<String, dynamic>.from(parsed[index] as Map)
+              : <String, dynamic>{};
+      return {
+        'open': current['open'] ?? !legacyClosed.contains('$index'),
+        'start': current['start'] ?? _object['work_start'] ?? '09:00',
+        'end': current['end'] ?? _object['work_end'] ?? '19:00',
+        'break_start': current['break_start'] ?? '',
+        'break_end': current['break_end'] ?? '',
+      };
+    });
+  }
+
+  Widget _scheduleField(int day, String key, String label) => SizedBox(
+        width: 180,
+        child: TextFormField(
+          key: ValueKey('$day-$key-${_weeklySchedule![day][key]}'),
+          initialValue: '${_weeklySchedule![day][key] ?? ''}',
+          keyboardType: TextInputType.datetime,
+          onChanged: (value) => _weeklySchedule![day][key] = value,
+          decoration: InputDecoration(labelText: label, hintText: 'HH:MM'),
+        ),
+      );
+
+  Future<void> _saveWeeklySchedule() async {
+    final firstOpen = _weeklySchedule!.firstWhere(
+      (day) => day['open'] == true,
+      orElse: () => {'start': '09:00', 'end': '19:00'},
+    );
+    final ok = await widget.viewModel.saveCurrent(ProModule.hours, {
+      'workStart': firstOpen['start'],
+      'workEnd': firstOpen['end'],
+      'offDays': 'SCHEDULE_JSON:${jsonEncode(_weeklySchedule)}',
+    });
+    if (mounted) {
+      _message(ok
+          ? 'Funcionamento semanal salvo.'
+          : 'Não foi possível salvar o funcionamento.');
+    }
+  }
+
+  Widget _currentField(String key, String label, String initial,
+          {bool time = false}) =>
+      Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: TextFormField(
+              initialValue: _currentInputs[key] ?? initial,
+              keyboardType: time ? TextInputType.datetime : TextInputType.text,
+              onChanged: (value) => _currentInputs[key] = value,
+              decoration: InputDecoration(
+                  labelText: label, hintText: time ? 'HH:MM' : null)));
 
   Future<void> _saveCurrent(ProModule module) async {
-    final allowed = module == ProModule.profile ? ['name', 'phone', 'photoUrl', 'backgroundUrl'] : ['workStart', 'workEnd', 'breakStart', 'breakEnd', 'offDays'];
-    final body = <String, dynamic>{for (final key in allowed) if (_currentInputs.containsKey(key)) key: _currentInputs[key]};
-    if (body.isEmpty) { _message('Altere algum campo antes de salvar.'); return; }
+    final allowed = module == ProModule.profile
+        ? ['name', 'phone', 'photoUrl', 'backgroundUrl']
+        : ['workStart', 'workEnd', 'breakStart', 'breakEnd', 'offDays'];
+    final body = <String, dynamic>{
+      for (final key in allowed)
+        if (_currentInputs.containsKey(key)) key: _currentInputs[key]
+    };
+    if (body.isEmpty) {
+      _message('Altere algum campo antes de salvar.');
+      return;
+    }
     final ok = await widget.viewModel.saveCurrent(module, body);
-    if (mounted) _message(ok ? 'Configurações salvas.' : 'Não foi possível salvar as configurações.');
+    if (mounted) {
+      _message(ok
+          ? 'Configurações salvas.'
+          : 'Não foi possível salvar as configurações.');
+    }
   }
 
   Widget _support() => _surface('Como podemos ajudar?',
           'Envie sua dúvida para o suporte ou acesse respostas rápidas.', [
-        _command(
-            'Falar com suporte',
-            'Nossa equipe responde pelo WhatsApp em horário comercial.',
-            ['Abrir WhatsApp']),
-        _command(
-            'Central de ajuda',
-            'Dúvidas sobre agenda, carteira, clientes e configurações.',
-            ['Abrir ajuda']),
-        _command(
-            'Status da conta', 'Plano ZenBarber Pro ativo.', ['Ver detalhes']),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const CircleAvatar(child: Icon(Icons.chat)),
+          title: const Text('Falar com suporte'),
+          subtitle: const Text(
+              'Nossa equipe responde pelo WhatsApp em horário comercial.'),
+          trailing: FilledButton(
+            onPressed: () => _openExternal(Uri.parse(
+                'https://wa.me/${AppConfig.supportWhatsApp}?text=${Uri.encodeComponent('Olá! Preciso de ajuda com o ZenBarber.')}')),
+            child: const Text('Abrir WhatsApp'),
+          ),
+        ),
+        const Divider(),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const CircleAvatar(child: Icon(Icons.help_outline)),
+          title: const Text('Central NextJumpX'),
+          subtitle:
+              const Text('Novidades, documentação e canais de atendimento.'),
+          trailing: OutlinedButton(
+            onPressed: () =>
+                _openExternal(Uri.parse('https://nextjumpx.com.br')),
+            child: const Text('Abrir'),
+          ),
+        ),
       ]);
 
-  Widget _units() => _surface('Unidades cadastradas', 'Solicitações e unidades vinculadas a esta barbearia.', [
-        if (_rows.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text('Nenhuma unidade adicional cadastrada.', style: TextStyle(color: ZenColors.muted))) else ..._rows.map((row) => _command('${row['unit_name'] ?? 'Unidade'}', '${row['city'] ?? ''}/${row['state'] ?? ''} • status: ${row['status'] ?? 'pendente'}', ['Selecionar'])),
+  Future<void> _openExternal(Uri uri) async {
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) _message('Não foi possível abrir o link.');
+  }
+
+  Widget _units() => _surface('Unidades cadastradas',
+          'Solicitações e unidades vinculadas a esta barbearia.', [
+        if (_rows.isEmpty)
+          const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Nenhuma unidade adicional cadastrada.',
+                  style: TextStyle(color: ZenColors.muted)))
+        else
+          ..._rows.map((row) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const CircleAvatar(child: Icon(Icons.storefront)),
+                title: Text('${row['unit_name'] ?? 'Unidade'}'),
+                subtitle: Text(
+                    '${row['city'] ?? ''}/${row['state'] ?? ''} • ${row['barber_count'] ?? 0} profissional(is)'),
+                trailing: ZenStatusPill(
+                  label: '${row['status'] ?? 'pendente'}',
+                  color: row['status'] == 'aprovado'
+                      ? ZenColors.green
+                      : ZenColors.gold,
+                ),
+              )),
         const SizedBox(height: 10),
-        Align(alignment: Alignment.centerRight, child: _action('Adicionar unidade', _createUnitDialog, green: true)),
+        Align(
+            alignment: Alignment.centerRight,
+            child:
+                _action('Adicionar unidade', _createUnitDialog, green: true)),
       ]);
 
   Future<void> _createUnitDialog() async {
@@ -485,11 +966,60 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     final city = TextEditingController();
     final state = TextEditingController();
     final amount = TextEditingController(text: '1');
-    final value = await showDialog<Map<String, String>>(context: context, builder: (context) => AlertDialog(title: const Text('Nova unidade'), content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: name, decoration: const InputDecoration(labelText: 'Nome da unidade')), const SizedBox(height: 10), TextField(controller: city, decoration: const InputDecoration(labelText: 'Cidade')), const SizedBox(height: 10), TextField(controller: state, decoration: const InputDecoration(labelText: 'UF')), const SizedBox(height: 10), TextField(controller: amount, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Quantidade de barbeiros'))])), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(context, {'name': name.text.trim(), 'city': city.text.trim(), 'state': state.text.trim(), 'amount': amount.text.trim()}), child: const Text('Solicitar'))]));
-    name.dispose(); city.dispose(); state.dispose(); amount.dispose();
+    final value = await showDialog<Map<String, String>>(
+        context: context,
+        builder: (context) => AlertDialog(
+                title: const Text('Nova unidade'),
+                content: SingleChildScrollView(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  TextField(
+                      controller: name,
+                      decoration:
+                          const InputDecoration(labelText: 'Nome da unidade')),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: city,
+                      decoration: const InputDecoration(labelText: 'Cidade')),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: state,
+                      decoration: const InputDecoration(labelText: 'UF')),
+                  const SizedBox(height: 10),
+                  TextField(
+                      controller: amount,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                          labelText: 'Quantidade de barbeiros'))
+                ])),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Cancelar')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, {
+                            'name': name.text.trim(),
+                            'city': city.text.trim(),
+                            'state': state.text.trim(),
+                            'amount': amount.text.trim()
+                          }),
+                      child: const Text('Solicitar'))
+                ]));
+    name.dispose();
+    city.dispose();
+    state.dispose();
+    amount.dispose();
     if (value == null || (value['name'] ?? '').isEmpty) return;
-    final ok = await widget.viewModel.createUnit({'unitName': value['name'], 'city': value['city'], 'state': value['state'], 'barberCount': int.tryParse(value['amount'] ?? '') ?? 1});
-    if (mounted) _message(ok ? 'Solicitação de unidade enviada.' : 'Não foi possível criar a solicitação.');
+    final ok = await widget.viewModel.createUnit({
+      'unitName': value['name'],
+      'city': value['city'],
+      'state': value['state'],
+      'barberCount': int.tryParse(value['amount'] ?? '') ?? 1
+    });
+    if (mounted) {
+      _message(ok
+          ? 'Solicitação de unidade enviada.'
+          : 'Não foi possível criar a solicitação.');
+    }
   }
 
   Widget _surface(String heading, String description, List<Widget> children) =>
@@ -569,46 +1099,19 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           runSpacing: 8,
           children: filters
               .map((item) => OutlinedButton(
-                  onPressed: () => _message('Filtro $item aplicado.'),
+                  onPressed: () => setState(() => _activeFilter = item),
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: _activeFilter == item
+                        ? ZenColors.green.withValues(alpha: .18)
+                        : null,
+                    side: BorderSide(
+                      color: _activeFilter == item
+                          ? ZenColors.green
+                          : const Color(0xff354251),
+                    ),
+                  ),
                   child: Text(item)))
               .toList()));
-
-  Widget _command(String heading, String subheading, List<String> actions) =>
-      Container(
-          margin: const EdgeInsets.only(top: 10),
-          padding: const EdgeInsets.all(14),
-          decoration: _inset(),
-          child: LayoutBuilder(
-              builder: (context, box) => box.maxWidth > 620
-                  ? Row(children: [
-                      Expanded(child: _walletText(heading, subheading, '')),
-                      const SizedBox(width: 10),
-                      Wrap(
-                          spacing: 7,
-                          runSpacing: 7,
-                          alignment: WrapAlignment.end,
-                          children: actions
-                              .map((label) => _action(
-                                  label, () => _complete('$heading:$label'),
-                                  green: label.contains('Confirmar') ||
-                                      label.contains('baixa') ||
-                                      label.contains('recebido') ||
-                                      label.contains('recuperado')))
-                              .toList())
-                    ])
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                          _walletText(heading, subheading, ''),
-                          const SizedBox(height: 10),
-                          Wrap(
-                              spacing: 7,
-                              runSpacing: 7,
-                              children: actions
-                                  .map((label) => _action(label,
-                                      () => _complete('$heading:$label')))
-                                  .toList())
-                        ])));
 
   // ignore: unused_element
   Widget _dayRow(String day, {bool closed = false}) => Container(
@@ -730,11 +1233,6 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
       color: const Color(0xff08121d),
       border: Border.all(color: const Color(0xff213041)),
       borderRadius: BorderRadius.circular(16));
-
-  void _complete(String id) {
-    setState(() => _completed.add(id));
-    _message('Ação registrada com sucesso.');
-  }
 }
 
 // ignore: unused_element

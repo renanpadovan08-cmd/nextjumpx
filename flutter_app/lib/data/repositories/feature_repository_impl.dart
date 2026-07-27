@@ -1,2 +1,30 @@
-import '../../domain/repositories/i_feature_repository.dart'; import '../data_sources/feature_remote_data_source.dart';
-class FeatureRepositoryImpl implements IFeatureRepository { const FeatureRepositoryImpl(this._source); final FeatureRemoteDataSource _source; @override Future<List<dynamic>> fixedClients()=>_source.fixedClients(); @override Future<void> pay(String id)=>_source.pay(id); @override Future<void> createFixedClient(Map<String,dynamic> body)=>_source.createFixedClient(body); @override Future<void> cancelFixedClient(String code)=>_source.cancelFixedClient(code); @override Future<dynamic> operations(int tab)=>_source.operations(tab); @override Future<dynamic> publicBooking(String login)=>_source.publicBooking(login); }
+import '../../domain/repositories/i_feature_repository.dart';
+import '../data_sources/feature_remote_data_source.dart';
+
+class FeatureRepositoryImpl implements IFeatureRepository {
+  const FeatureRepositoryImpl(this._source);
+  final FeatureRemoteDataSource _source;
+  @override
+  Future<List<dynamic>> fixedClients() => _source.fixedClients();
+  @override
+  Future<void> pay(String id) => _source.pay(id);
+  @override
+  Future<void> createFixedClient(Map<String, dynamic> body) =>
+      _source.createFixedClient(body);
+  @override
+  Future<void> cancelFixedClient(String code) =>
+      _source.cancelFixedClient(code);
+  @override
+  Future<dynamic> operations(int tab) => _source.operations(tab);
+  @override
+  Future<dynamic> saveBusinessGoal(Map<String, dynamic> body) =>
+      _source.saveBusinessGoal(body);
+  @override
+  Future<dynamic> publicBooking(String login) => _source.publicBooking(login);
+  @override
+  Future<List<dynamic>> publicAvailability(String barberId, String date) =>
+      _source.publicAvailability(barberId, date);
+  @override
+  Future<dynamic> createPublicAppointment(Map<String, dynamic> body) =>
+      _source.createPublicAppointment(body);
+}

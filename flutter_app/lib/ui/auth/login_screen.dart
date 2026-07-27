@@ -12,6 +12,105 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
+class ForcedPasswordScreen extends StatefulWidget {
+  const ForcedPasswordScreen({super.key, required this.viewModel});
+
+  final AppViewModel viewModel;
+
+  @override
+  State<ForcedPasswordScreen> createState() => _ForcedPasswordScreenState();
+}
+
+class _ForcedPasswordScreenState extends State<ForcedPasswordScreen> {
+  final _password = TextEditingController();
+  final _confirmation = TextEditingController();
+
+  @override
+  void dispose() {
+    _password.dispose();
+    _confirmation.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_password.text.length < 8) {
+      _message('A senha precisa ter ao menos 8 caracteres.');
+      return;
+    }
+    if (_password.text != _confirmation.text) {
+      _message('A confirmação não confere.');
+      return;
+    }
+    final ok = await widget.viewModel.changePassword(_password.text);
+    if (!ok && mounted) {
+      _message(widget.viewModel.error ?? 'Não foi possível trocar a senha.');
+    }
+  }
+
+  void _message(String value) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(value)));
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: _ZenPanel(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Crie uma nova senha',
+                      style:
+                          TextStyle(fontSize: 25, fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'O administrador gerou uma senha temporária. Antes de continuar, defina sua senha definitiva.',
+                      style: TextStyle(color: Color(0xffaab8cc), height: 1.35),
+                    ),
+                    const SizedBox(height: 18),
+                    _LoginField(
+                      controller: _password,
+                      hint: 'Nova senha',
+                      obscureText: true,
+                      validator: (_) => null,
+                    ),
+                    const SizedBox(height: 12),
+                    _LoginField(
+                      controller: _confirmation,
+                      hint: 'Confirmar nova senha',
+                      obscureText: true,
+                      validator: (_) => null,
+                    ),
+                    if (widget.viewModel.error != null) ...[
+                      const SizedBox(height: 10),
+                      Text(widget.viewModel.error!,
+                          style: const TextStyle(color: Color(0xffff8585))),
+                    ],
+                    const SizedBox(height: 16),
+                    _GreenAction(
+                      label: widget.viewModel.loading
+                          ? 'Salvando...'
+                          : 'Salvar e continuar',
+                      onTap: widget.viewModel.loading ? null : _save,
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: widget.viewModel.logout,
+                      child: const Text('Sair'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+
 class _LoginScreenState extends State<LoginScreen> {
   final _login = TextEditingController();
   final _password = TextEditingController();
@@ -35,6 +134,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final login = TextEditingController();
     final password = TextEditingController();
     final phone = TextEditingController();
+    var plan = 'mensal';
     final signupForm = GlobalKey<FormState>();
 
     final done = await showDialog<bool>(
@@ -84,6 +184,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       ? 'Use ao menos 8 caracteres'
                       : null,
                 ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: plan,
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'mensal', child: Text('Plano mensal')),
+                    DropdownMenuItem(
+                        value: 'trimestral', child: Text('Plano trimestral')),
+                    DropdownMenuItem(
+                        value: 'anual', child: Text('Plano anual')),
+                  ],
+                  onChanged: (value) => plan = value ?? plan,
+                  decoration: const InputDecoration(labelText: 'Plano'),
+                ),
               ],
             ),
           ),
@@ -102,6 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 login: login.text.trim(),
                 phone: phone.text.trim(),
                 password: password.text,
+                plan: plan,
               );
               if (ok && dialogContext.mounted) {
                 Navigator.pop(dialogContext, true);

@@ -41,11 +41,15 @@ class _AppShellState extends State<AppShell> {
   late final CatalogScreen catalog = CatalogFactory.build(widget.app.user!);
   late final BarbersScreen barbers = BarbersFactory.build(widget.app.user!);
   late final FixedClientsScreen fixedClients = FixedClientsScreen(
-      viewModel: FeatureFactories.fixedClients(), user: widget.app.user!);
+      viewModel: FeatureFactories.fixedClients(),
+      barbers: FeatureFactories.fixedClientsBarbers(),
+      user: widget.app.user!);
   late final OperationsScreen operations =
       OperationsScreen(viewModel: FeatureFactories.operations());
-  late final PublicBookingScreen publicBooking =
-      PublicBookingScreen(viewModel: FeatureFactories.publicBooking());
+  late final PublicBookingScreen publicBooking = PublicBookingScreen(
+    viewModel: FeatureFactories.publicBooking(),
+    initialLogin: widget.app.user!.login,
+  );
   late final ProModuleScreen wallet = ProModuleScreen(
       module: ProModule.wallet, viewModel: ProModuleFactory.build());
   late final ProModuleScreen whatsapp = ProModuleScreen(
@@ -73,7 +77,11 @@ class _AppShellState extends State<AppShell> {
   @override
   void initState() {
     super.initState();
-    dashboard = DashboardFactory.build(userName: widget.app.user!.name);
+    dashboard = DashboardFactory.build(
+      userName: widget.app.user!.name,
+      canManage: widget.app.user!.isManager,
+      onNavigate: _navigate,
+    );
     if (widget.app.user!.isAdmin) index = 18;
   }
 
@@ -164,37 +172,52 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  Widget _mobileShell() => Scaffold(
-        appBar: AppBar(
-          title: Text('$_title · ${widget.app.user!.shopName}'),
-          actions: [
-            IconButton(
-                onPressed: widget.app.logout, icon: const Icon(Icons.logout)),
-          ],
-        ),
-        body: IndexedStack(index: index, children: screens),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: index > 4 ? 0 : index,
-          onDestinationSelected: _navigate,
-          destinations: const [
-            NavigationDestination(
-                icon: Icon(Icons.dashboard_outlined),
-                selectedIcon: Icon(Icons.dashboard),
-                label: 'Início'),
-            NavigationDestination(
-                icon: Icon(Icons.calendar_today_outlined),
-                selectedIcon: Icon(Icons.calendar_today),
-                label: 'Agenda'),
-            NavigationDestination(
-                icon: Icon(Icons.content_cut), label: 'Serviços'),
-            NavigationDestination(
+  Widget _mobileShell() {
+    final manager = widget.app.user!.isManager;
+    final targets =
+        manager ? const [0, 1, 13, 12, 3] : const [0, 1, 13, 14, 15];
+    final selected = targets.indexOf(index);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('$_title · ${widget.app.user!.shopName}'),
+        actions: [
+          IconButton(
+              onPressed: widget.app.logout, icon: const Icon(Icons.logout)),
+        ],
+      ),
+      body: IndexedStack(index: index, children: screens),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: selected < 0 ? 0 : selected,
+        onDestinationSelected: (destination) => _navigate(targets[destination]),
+        destinations: [
+          const NavigationDestination(
+              icon: Icon(Icons.dashboard_outlined),
+              selectedIcon: Icon(Icons.dashboard),
+              label: 'Início'),
+          const NavigationDestination(
+              icon: Icon(Icons.calendar_today_outlined),
+              selectedIcon: Icon(Icons.calendar_today),
+              label: 'Agenda'),
+          const NavigationDestination(
+              icon: Icon(Icons.content_cut), label: 'Serviços'),
+          if (manager)
+            const NavigationDestination(
                 icon: Icon(Icons.groups_outlined),
                 selectedIcon: Icon(Icons.groups),
-                label: 'Equipe'),
-            NavigationDestination(icon: Icon(Icons.repeat), label: 'Fixos'),
-          ],
-        ),
-      );
+                label: 'Equipe')
+          else
+            const NavigationDestination(
+                icon: Icon(Icons.person_outline), label: 'Perfil'),
+          if (manager)
+            const NavigationDestination(
+                icon: Icon(Icons.repeat), label: 'Fixos')
+          else
+            const NavigationDestination(
+                icon: Icon(Icons.schedule), label: 'Horários'),
+        ],
+      ),
+    );
+  }
 
   Widget _desktopHeader() => Container(
         height: 148,
@@ -220,10 +243,12 @@ class _AppShellState extends State<AppShell> {
                 ),
               ),
               if (constraints.maxWidth >= 740) ...[
-                const _UnitPicker(),
-                const SizedBox(width: 10),
-                _HeaderButton(label: 'Gerenciar', onTap: () => _navigate(17)),
-                const SizedBox(width: 12),
+                if (widget.app.user!.isManager) ...[
+                  const _UnitPicker(),
+                  const SizedBox(width: 10),
+                  _HeaderButton(label: 'Gerenciar', onTap: () => _navigate(17)),
+                  const SizedBox(width: 12),
+                ],
                 _HeaderButton(
                     label: '🔔 Novidades',
                     onTap: () => _unavailable('Novidades')),
@@ -257,12 +282,14 @@ class _AppShellState extends State<AppShell> {
                             setState(() => atendimentoOpen = !atendimentoOpen)),
                     if (atendimentoOpen) ...[
                       _nav('Agenda Premium', Icons.calendar_month_rounded, 1),
-                      _nav('Clientes em carteira',
-                          Icons.account_balance_wallet_outlined, 2),
-                      _nav('Clientes fixos', Icons.repeat_rounded, 3),
                       _nav('Link do cliente', Icons.link_rounded, 4),
-                      _nav('Central WhatsApp',
-                          Icons.chat_bubble_outline_rounded, 5),
+                      if (widget.app.user!.isManager) ...[
+                        _nav('Clientes em carteira',
+                            Icons.account_balance_wallet_outlined, 2),
+                        _nav('Clientes fixos', Icons.repeat_rounded, 3),
+                        _nav('Central WhatsApp',
+                            Icons.chat_bubble_outline_rounded, 5),
+                      ],
                     ],
                     const SizedBox(height: 10),
                     _section('NEGÓCIO', negocioOpen,
@@ -272,17 +299,19 @@ class _AppShellState extends State<AppShell> {
                       if (widget.app.user!.isAdmin)
                         _nav('Gestao PRO', Icons.admin_panel_settings_outlined,
                             18),
-                      _nav('Pendências / Baixa', Icons.assignment_late_outlined,
-                          7),
-                      _nav(
-                          'Ranking / Comissão', Icons.emoji_events_outlined, 8),
-                      _nav('Comissões', Icons.payments_outlined, 9),
-                      _nav('Retenção', Icons.track_changes_rounded, 10),
-                      _nav('Meu Negócio', Icons.storefront_outlined, 6),
-                      _nav('Unidades', Icons.apartment_rounded, 17),
-                      _nav('Controle de Caixa', Icons.point_of_sale_outlined,
-                          11),
-                      _nav('Barbeiros', Icons.content_cut_rounded, 12),
+                      if (widget.app.user!.isManager) ...[
+                        _nav('Pendências / Baixa',
+                            Icons.assignment_late_outlined, 7),
+                        _nav('Ranking / Comissão', Icons.emoji_events_outlined,
+                            8),
+                        _nav('Comissões', Icons.payments_outlined, 9),
+                        _nav('Retenção', Icons.track_changes_rounded, 10),
+                        _nav('Meu Negócio', Icons.storefront_outlined, 6),
+                        _nav('Unidades', Icons.apartment_rounded, 17),
+                        _nav('Controle de Caixa', Icons.point_of_sale_outlined,
+                            11),
+                        _nav('Barbeiros', Icons.content_cut_rounded, 12),
+                      ],
                       _nav('Serviços', Icons.design_services_outlined, 13),
                       _nav('Perfil / Configurações',
                           Icons.manage_accounts_outlined, 14),

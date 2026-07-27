@@ -23,8 +23,15 @@ class OperationsRepositoryImpl implements IOperationsRepository {
   Future<List<dynamic>> units() => _source.units();
 
   @override
-  Future<dynamic> createUnit(Map<String, dynamic> body) => _source.createUnit(body);
+  Future<dynamic> createUnit(Map<String, dynamic> body) =>
+      _source.createUnit(body);
 
   @override
-  Future<dynamic> createCashEntry(Map<String, dynamic> body) => _source.createCashEntry(body);
+  Future<dynamic> createCashEntry(Map<String, dynamic> body) =>
+      _source.createCashEntry(body);
+  @override
+  Future<void> deleteCashEntry(String id) => _source.deleteCashEntry(id);
+  @override
+  Future<dynamic> createRetentionAction(Map<String, dynamic> body) =>
+      _source.createRetentionAction(body);
 }

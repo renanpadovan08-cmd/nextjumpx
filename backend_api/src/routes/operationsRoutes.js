@@ -11,6 +11,7 @@ router.get('/operations/pending', requireRoles('admin', 'gerente', 'manager', 'o
 router.patch('/operations/pending/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.pendingAction));
 router.get('/operations/commissions', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.commissions));
 router.get('/operations/retention', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.retention));
+router.post('/operations/retention/actions', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.retentionAction));
 router.get('/operations/cash', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.cash));
 router.post('/operations/cash/entries', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.createCashEntry));
 router.delete('/operations/cash/entries/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.deleteCashEntry));

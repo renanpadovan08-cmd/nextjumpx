@@ -10,6 +10,7 @@ class AgendaViewModel extends ChangeNotifier {
   bool loading = false;
   String? error;
   String selectedDate = DateTime.now().toIso8601String().substring(0, 10);
+  String? selectedBarberId;
 
   Future<void> load({String? barberId, String? date}) async {
     loading = true;
@@ -17,7 +18,11 @@ class AgendaViewModel extends ChangeNotifier {
     notifyListeners();
     try {
       selectedDate = date ?? selectedDate;
-      items = await _repository.list(barberId: barberId, date: selectedDate);
+      if (barberId != null) selectedBarberId = barberId;
+      items = await _repository.list(
+        barberId: selectedBarberId,
+        date: selectedDate,
+      );
     } catch (e) {
       error = '$e';
     } finally {

@@ -7,6 +7,9 @@ import 'ui/auth/login_screen.dart';
 import 'ui/core/app_shell.dart';
 import 'ui/core/view_models/app_view_model.dart';
 import 'ui/landing/nextjumpx_landing_screen.dart';
+import 'ui/public_booking/public_booking_screen.dart';
+import 'dependency_injection/factories/feature_factories.dart';
+import 'ui/features/view_models/feature_view_models.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,11 +24,13 @@ class ZenBarberApp extends StatefulWidget {
 
 class _ZenBarberAppState extends State<ZenBarberApp> {
   late final AppViewModel app;
+  late final PublicBookingViewModel publicBooking;
   bool showLogin = false;
   @override
   void initState() {
     super.initState();
     app = AppViewModelFactory.build()..addListener(_refresh);
+    publicBooking = FeatureFactories.publicBooking();
     app.restoreSession();
   }
 
@@ -40,20 +45,35 @@ class _ZenBarberAppState extends State<ZenBarberApp> {
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-      navigatorKey: navigatorKey,
-      scaffoldMessengerKey: scaffoldMessengerKey,
-      debugShowCheckedModeBanner: false,
-      title: 'NextJumpX',
-      theme: ZenTheme.dark(),
-      builder: (context, child) =>
-          ZenAppBackground(child: child ?? const SizedBox()),
-      home: app.loading
-          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : app.authenticated
-              ? AppShell(app: app)
-              : showLogin
-                  ? LoginScreen(viewModel: app)
-                  : NextJumpXLandingScreen(
-                      onZenBarber: () => setState(() => showLogin = true)));
+  Widget build(BuildContext context) {
+    final fragment = Uri.base.fragment;
+    final bookingLogin = fragment.startsWith('book/')
+        ? Uri.decodeComponent(fragment.substring('book/'.length))
+        : '';
+    return MaterialApp(
+        navigatorKey: navigatorKey,
+        scaffoldMessengerKey: scaffoldMessengerKey,
+        debugShowCheckedModeBanner: false,
+        title: 'NextJumpX',
+        theme: ZenTheme.dark(),
+        builder: (context, child) =>
+            ZenAppBackground(child: child ?? const SizedBox()),
+        home: bookingLogin.isNotEmpty
+            ? PublicBookingScreen(
+                viewModel: publicBooking,
+                initialLogin: bookingLogin,
+              )
+            : app.loading
+                ? const Scaffold(
+                    body: Center(child: CircularProgressIndicator()))
+                : app.authenticated
+                    ? app.user!.mustChangePassword
+                        ? ForcedPasswordScreen(viewModel: app)
+                        : AppShell(app: app)
+                    : showLogin
+                        ? LoginScreen(viewModel: app)
+                        : NextJumpXLandingScreen(
+                            onZenBarber: () =>
+                                setState(() => showLogin = true)));
+  }
 }

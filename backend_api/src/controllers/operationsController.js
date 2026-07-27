@@ -1,9 +1,10 @@
 import { supabase, one, query } from '../services/supabaseService.js';
 import { HttpError } from '../utils/httpError.js';
+import { businessNow } from '../services/schedulePolicy.js';
 
 const paidStatuses = ['concluido', 'finalizado'];
 const openStatuses = ['agendado', 'encaixe', 'em_andamento'];
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => businessNow().date;
 
 async function scopedBarbers(user) {
   if (user.role === 'admin') return query(supabase.from('barbers').select('id,name,commission_rate,shop_name').order('name'));
@@ -96,8 +97,55 @@ export async function retention(req, res) {
     const existing = lastByClient.get(key);
     if (!existing || row.date > existing.date) lastByClient.set(key, row);
   }
-  const risk = [...lastByClient.values()].map((row) => ({ ...row, daysAway: Math.max(0, Math.floor((new Date(`${today()}T12:00:00`) - new Date(`${row.date}T12:00:00`)) / 86400000)) })).filter((row) => row.daysAway >= 30).sort((a, b) => b.daysAway - a.daysAway);
-  res.json({ risk, recovered: 0, returnRate: 0, zenIndex: risk.length > 5 ? 3 : risk.length > 2 ? 5 : risk.length ? 7 : 10 });
+  let actions = [];
+  const actionResult = await supabase.from('client_retention_actions').select('*').eq('shop_name', req.user.shopName);
+  if (!actionResult.error) actions = actionResult.data || [];
+  else if (actionResult.error.code !== '42P01'
+      && !/Could not find the table/i.test(String(actionResult.error.message))) {
+    throw new HttpError(400, actionResult.error.message);
+  }
+  const recoveredKeys = new Set(actions.filter((action) => action.action === 'recuperado').map((action) => action.client_key));
+  const risk = [...lastByClient.values()].map((row) => {
+    const clientKey = `${String(row.client_phone || '').replace(/\D/g, '')}|${String(row.client_name || '').trim().toLowerCase()}`;
+    return {
+      ...row,
+      clientKey,
+      daysAway: Math.max(0, Math.floor((new Date(`${today()}T12:00:00`) - new Date(`${row.date}T12:00:00`)) / 86400000)),
+    };
+  }).filter((row) => row.daysAway >= 30 && !recoveredKeys.has(row.clientKey)).sort((a, b) => b.daysAway - a.daysAway);
+  const recovered = recoveredKeys.size;
+  const eligible = risk.length + recovered;
+  const returnRate = eligible ? Math.round((recovered / eligible) * 100) : 0;
+  res.json({ risk, recovered, returnRate, zenIndex: risk.length > 5 ? 3 : risk.length > 2 ? 5 : risk.length ? 7 : 10 });
+}
+
+export async function retentionAction(req, res) {
+  const {
+    clientKey, clientName = '', clientPhone = '', action = 'contacted',
+    daysAway = 0, barberId = null,
+  } = req.body;
+  if (!String(clientKey || '').trim()) throw new HttpError(400, 'Cliente de retencao invalido');
+  if (!['contacted', 'recovered'].includes(action)) throw new HttpError(400, 'Acao de retencao invalida');
+  try {
+    res.status(201).json(await query(
+      supabase.from('client_retention_actions').insert({
+        shop_name: req.user.shopName,
+        client_key: String(clientKey).trim(),
+        client_name: String(clientName).trim(),
+        client_phone: String(clientPhone).trim(),
+        barber_id: barberId,
+        action: action === 'recovered' ? 'recuperado' : 'whatsapp',
+        status_level: Number(daysAway) >= 60 ? 'vermelho' : Number(daysAway) >= 45 ? 'laranja' : 'amarelo',
+        days_without_return: Math.max(0, Number(daysAway) || 0),
+        created_by: req.user.id,
+      }).select().single(),
+    ));
+  } catch (error) {
+    if (/Could not find the table/i.test(String(error.message))) {
+      throw new HttpError(400, 'Atualize o banco para habilitar as acoes de retencao');
+    }
+    throw error;
+  }
 }
 
 export async function cash(req, res) {

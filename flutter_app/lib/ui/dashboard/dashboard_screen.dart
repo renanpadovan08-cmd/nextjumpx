@@ -5,10 +5,17 @@ import '../core/widgets/zen_card.dart';
 import 'view_models/dashboard_view_model.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen(
-      {super.key, required this.viewModel, required this.userName});
+  const DashboardScreen({
+    super.key,
+    required this.viewModel,
+    required this.userName,
+    required this.canManage,
+    required this.onNavigate,
+  });
   final DashboardViewModel viewModel;
   final String userName;
+  final bool canManage;
+  final ValueChanged<int> onNavigate;
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -54,9 +61,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final data = widget.viewModel.data;
-    final revenue = data?.revenue ?? 0;
-    final appointmentCount = data?.appointments ?? 0;
-    final completed = data?.completed ?? 0;
     return RefreshIndicator(
       onRefresh: widget.viewModel.load,
       child: ListView(
@@ -72,42 +76,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
             spacing: 12,
             runSpacing: 12,
             children: [
-              _metric('Faturamento hoje', money(revenue), 'concluído no dia',
-                  Icons.payments_outlined, ZenColors.green),
+              _metric('Faturamento hoje', money(data?.todayRevenue ?? 0),
+                  'concluído no dia', Icons.payments_outlined, ZenColors.green),
               _metric(
                   'Recorrência prevista',
-                  money(revenue),
-                  'receita prevista do mês',
+                  money(data?.walletAmount ?? 0),
+                  '${data?.walletCount ?? 0} cobrança(s) em carteira',
                   Icons.repeat_rounded,
                   const Color(0xfff5bf42)),
               _metric(
                   'Agenda de hoje',
-                  '$appointmentCount',
-                  '$completed concluído(s)',
+                  '${data?.todayAppointments ?? 0}',
+                  '${data?.todayCompleted ?? 0} concluído(s)',
                   Icons.calendar_month_outlined,
                   ZenColors.sky),
               _metric(
                   'Clientes em risco',
-                  '${data?.byBarber.length ?? 0}',
+                  '${data?.risk ?? 0}',
                   'oportunidades de retorno',
                   Icons.track_changes_rounded,
                   const Color(0xfff09c4d)),
             ],
           ),
           const SizedBox(height: 18),
-          _financialSummary(revenue, appointmentCount, completed),
+          _financialSummary(data),
           const SizedBox(height: 18),
           LayoutBuilder(
             builder: (context, box) => box.maxWidth > 840
                 ? Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Expanded(flex: 3, child: _recommendedActions()),
+                    Expanded(flex: 3, child: _recommendedActions(data)),
                     const SizedBox(width: 16),
-                    Expanded(flex: 2, child: _retention())
+                    Expanded(flex: 2, child: _retention(data))
                   ])
                 : Column(children: [
-                    _recommendedActions(),
+                    _recommendedActions(data),
                     const SizedBox(height: 16),
-                    _retention()
+                    _retention(data)
                   ]),
           ),
           const SizedBox(height: 18),
@@ -164,47 +168,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
             style: TextStyle(color: Color(0xffb1c1d1), height: 1.35)),
         const SizedBox(height: 18),
         Wrap(spacing: 9, runSpacing: 9, children: [
-          _quick('Abrir agenda', Icons.calendar_month_rounded),
-          _quick('Central WhatsApp', Icons.chat_bubble_outline_rounded),
-          _quick('Retenção', Icons.track_changes_rounded)
+          _quick('Abrir agenda', Icons.calendar_month_rounded, 1),
+          if (widget.canManage) ...[
+            _quick('Central WhatsApp', Icons.chat_bubble_outline_rounded, 5),
+            _quick('Retenção', Icons.track_changes_rounded, 10),
+          ],
         ]),
       ]);
 
-  Widget _quick(String label, IconData icon) => OutlinedButton.icon(
-      onPressed: () {},
-      icon: Icon(icon, size: 17),
-      label: Text(label),
-      style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xffeaffef),
-          side: const BorderSide(color: Color(0xff287447)),
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))));
+  Widget _quick(String label, IconData icon, int destination) =>
+      OutlinedButton.icon(
+          onPressed: () => widget.onNavigate(destination),
+          icon: Icon(icon, size: 17),
+          label: Text(label),
+          style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xffeaffef),
+              side: const BorderSide(color: Color(0xff287447)),
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12))));
 
-  Widget _nextAppointment() => Container(
-        width: 220,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-            color: const Color(0x8c071810),
-            border: Border.all(color: const Color(0xff275039)),
-            borderRadius: BorderRadius.circular(18)),
-        child: const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('PRÓXIMO HORÁRIO',
-                  style: TextStyle(
-                      fontSize: 10,
-                      color: Color(0xff8fbba0),
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: .8)),
-              SizedBox(height: 10),
-              Text('Livre',
-                  style: TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
-              SizedBox(height: 2),
-              Text('sem atendimento agora',
-                  style: TextStyle(color: Color(0xffaabbb1), fontSize: 12))
-            ]),
-      );
+  Widget _nextAppointment() {
+    final next = widget.viewModel.data?.nextAppointment;
+    return Container(
+      width: 220,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: const Color(0x8c071810),
+          border: Border.all(color: const Color(0xff275039)),
+          borderRadius: BorderRadius.circular(18)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('PRÓXIMO HORÁRIO',
+            style: TextStyle(
+                fontSize: 10,
+                color: Color(0xff8fbba0),
+                fontWeight: FontWeight.w900,
+                letterSpacing: .8)),
+        const SizedBox(height: 10),
+        Text(next == null ? 'Livre' : '${next['time']}',
+            style: const TextStyle(fontSize: 23, fontWeight: FontWeight.w900)),
+        const SizedBox(height: 2),
+        Text(
+            next == null
+                ? 'sem próximo atendimento'
+                : '${next['client_name']} · ${next['services']?['name'] ?? 'Serviço'}',
+            style: const TextStyle(color: Color(0xffaabbb1), fontSize: 12))
+      ]),
+    );
+  }
 
   Widget _metric(String label, String value, String hint, IconData icon,
           Color color) =>
@@ -236,8 +247,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
 
-  Widget _financialSummary(num revenue, int appointments, int completed) =>
-      ZenCard(
+  Widget _financialSummary(dynamic data) => ZenCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('Resumo financeiro do mês',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
@@ -249,11 +259,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           LayoutBuilder(
             builder: (context, box) =>
                 Wrap(spacing: 26, runSpacing: 18, children: [
-              _value('Faturamento bruto', money(revenue), ZenColors.green),
-              _value('Comissões a pagar', money(0), const Color(0xfff2be3f)),
-              _value('Lucro da barbearia', money(revenue),
+              _value('Faturamento bruto', money(data?.revenue ?? 0),
+                  ZenColors.green),
+              _value('Comissões a pagar', money(data?.totalCommission ?? 0),
+                  const Color(0xfff2be3f)),
+              _value('Lucro da barbearia', money(data?.profit ?? 0),
                   const Color(0xff79e4ac)),
-              _value('Atendimentos concluídos', '$completed de $appointments',
+              _value(
+                  'Atendimentos concluídos',
+                  '${data?.completed ?? 0} de ${data?.appointments ?? 0}',
                   ZenColors.sky),
             ]),
           ),
@@ -280,7 +294,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: color, fontSize: 20, fontWeight: FontWeight.w900))
       ]));
 
-  Widget _recommendedActions() => ZenCard(
+  Widget _recommendedActions(dynamic data) => ZenCard(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Row(children: [
@@ -295,21 +309,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 15),
         _action(
             Icons.calendar_month_rounded,
-            '9 encaixe(s) possível(is) hoje',
+            '${data?.todayAppointments ?? 0} atendimento(s) na agenda de hoje',
             'Use a agenda para aproveitar horários livres e aumentar o faturamento.',
-            'Agenda'),
-        const Divider(color: Color(0xff1d2b3a)),
-        _action(
-            Icons.receipt_long_outlined,
-            'Dar baixa em agendamentos passados',
-            'Confirme pagamento, carteira ou falta de cada cliente.',
-            'Abrir'),
-        const Divider(color: Color(0xff1d2b3a)),
-        _action(Icons.chat_bubble_outline_rounded, 'Central WhatsApp do dia',
-            'Ações rápidas para confirmar, reagendar ou cobrar.', 'WhatsApp')
+            'Agenda',
+            1),
+        if (widget.canManage) ...[
+          const Divider(color: Color(0xff1d2b3a)),
+          _action(
+              Icons.receipt_long_outlined,
+              '${data?.pending ?? 0} agendamento(s) aguardando baixa',
+              'Confirme pagamento, carteira ou falta de cada cliente.',
+              'Abrir',
+              7),
+          const Divider(color: Color(0xff1d2b3a)),
+          _action(
+              Icons.chat_bubble_outline_rounded,
+              'Central WhatsApp do dia',
+              'Ações rápidas para confirmar, reagendar ou cobrar.',
+              'WhatsApp',
+              5),
+        ],
       ]));
 
-  Widget _action(IconData icon, String title, String body, String button) =>
+  Widget _action(IconData icon, String title, String body, String button,
+          int destination) =>
       Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(
             padding: const EdgeInsets.all(8),
@@ -328,10 +351,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   color: ZenColors.muted, fontSize: 12, height: 1.25))
         ])),
         const SizedBox(width: 8),
-        TextButton(onPressed: () {}, child: Text(button))
+        TextButton(
+            onPressed: () => widget.onNavigate(destination),
+            child: Text(button))
       ]);
 
-  Widget _retention() => ZenCard(
+  Widget _retention(dynamic data) => ZenCard(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Retenção de clientes',
@@ -342,8 +367,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
             style: TextStyle(color: ZenColors.muted, fontSize: 12)),
         const SizedBox(height: 18),
         Row(children: [
-          _retentionMetric('Em risco', '2', const Color(0xfff5b446)),
-          _retentionMetric('Recuperados', '0', ZenColors.green)
+          _retentionMetric(
+              'Em risco', '${data?.risk ?? 0}', const Color(0xfff5b446)),
+          _retentionMetric(
+              'Recuperados', '${data?.recovered ?? 0}', ZenColors.green)
         ]),
         const SizedBox(height: 15),
         const Text('ÍNDICE ZEN',
@@ -352,16 +379,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 fontSize: 10,
                 fontWeight: FontWeight.w900)),
         const SizedBox(height: 5),
-        const Text('7 · Crítico',
-            style: TextStyle(
+        Text('${data?.zenIndex ?? 10} · Índice atual',
+            style: const TextStyle(
                 color: Color(0xfff2b65c),
                 fontSize: 20,
                 fontWeight: FontWeight.w900)),
         const SizedBox(height: 13),
-        SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-                onPressed: () {}, child: const Text('Abrir Retenção')))
+        if (widget.canManage)
+          SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                  onPressed: () => widget.onNavigate(10),
+                  child: const Text('Abrir Retenção')))
       ]));
 
   Widget _retentionMetric(String label, String value, Color color) => Expanded(
@@ -426,7 +455,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             style:
                                 const TextStyle(fontWeight: FontWeight.w900)),
                         Text(
-                            '${item['appointments'] ?? 0} atendimento(s) • Comissão 0%',
+                            '${item['appointments'] ?? 0} atendimento(s) • Comissão ${item['commissionRate'] ?? 0}%',
                             style: const TextStyle(
                                 color: ZenColors.muted, fontSize: 11))
                       ])),

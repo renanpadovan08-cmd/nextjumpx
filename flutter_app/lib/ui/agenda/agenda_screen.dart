@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../data/model/auth_user_dto.dart';
 import '../../data/model/appointment_dto.dart';
 import '../catalog/view_models/catalog_view_model.dart';
+import '../barbers/view_models/barbers_view_model.dart';
 import '../core/theme/zen_colors.dart';
 import '../core/widgets/zen_card.dart';
 import '../core/widgets/zen_page.dart';
@@ -15,32 +16,56 @@ class AgendaScreen extends StatefulWidget {
     required this.user,
     required this.viewModel,
     required this.catalog,
+    required this.barbers,
   });
 
   final AuthUserDto user;
   final AgendaViewModel viewModel;
   final CatalogViewModel catalog;
+  final BarbersViewModel barbers;
 
   @override
   State<AgendaScreen> createState() => _AgendaScreenState();
 }
 
 class _AgendaScreenState extends State<AgendaScreen> {
+  String? _selectedBarberId;
+
   @override
   void initState() {
     super.initState();
-    widget.viewModel
-      ..addListener(_refresh)
-      ..load();
-    widget.catalog
-      ..addListener(_refresh)
-      ..load(widget.user.id);
+    widget.viewModel.addListener(_refresh);
+    widget.catalog.addListener(_refresh);
+    widget.barbers.addListener(_refresh);
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    await widget.barbers.load();
+    if (!mounted) return;
+    final ids = widget.barbers.items.map((item) => item.id).toSet();
+    _selectedBarberId =
+        ids.contains(widget.user.id) ? widget.user.id : ids.firstOrNull;
+    if (_selectedBarberId == null) return;
+    await Future.wait([
+      widget.viewModel.load(barberId: _selectedBarberId),
+      widget.catalog.load(_selectedBarberId!),
+    ]);
+  }
+
+  Future<void> _selectBarber(String id) async {
+    setState(() => _selectedBarberId = id);
+    await Future.wait([
+      widget.viewModel.load(barberId: id),
+      widget.catalog.load(id),
+    ]);
   }
 
   @override
   void dispose() {
     widget.viewModel.removeListener(_refresh);
     widget.catalog.removeListener(_refresh);
+    widget.barbers.removeListener(_refresh);
     super.dispose();
   }
 
@@ -68,6 +93,23 @@ class _AgendaScreenState extends State<AgendaScreen> {
         children: [
           if (widget.viewModel.error != null)
             ZenCard(child: Text(widget.viewModel.error!)),
+          if (widget.barbers.items.length > 1) ...[
+            DropdownButtonFormField<String>(
+              initialValue: _selectedBarberId,
+              items: widget.barbers.items
+                  .map((barber) => DropdownMenuItem(
+                        value: barber.id,
+                        child: Text(barber.name),
+                      ))
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) _selectBarber(value);
+              },
+              decoration:
+                  const InputDecoration(labelText: 'Agenda do profissional'),
+            ),
+            const SizedBox(height: 16),
+          ],
           _dateChips(),
           const SizedBox(height: 16),
           _kpiGrid(),
@@ -270,12 +312,14 @@ class _AgendaScreenState extends State<AgendaScreen> {
           ),
           if (['agendado', 'encaixe'].contains(next.status))
             OutlinedButton(
-              onPressed: () => widget.viewModel.update(next.id, {'status': 'em_andamento'}),
+              onPressed: () =>
+                  widget.viewModel.update(next.id, {'status': 'em_andamento'}),
               child: const Text('Iniciar'),
             ),
           if (['agendado', 'encaixe', 'em_andamento'].contains(next.status))
             OutlinedButton(
-              onPressed: () => widget.viewModel.update(next.id, {'status': 'faltou'}),
+              onPressed: () =>
+                  widget.viewModel.update(next.id, {'status': 'faltou'}),
               child: const Text('Faltou'),
             ),
         ]),
@@ -397,19 +441,23 @@ class _AgendaScreenState extends State<AgendaScreen> {
                         onPressed: () => widget.viewModel.finish(item),
                         child: const Text('Finalizar'),
                       ),
-                    if (['agendado', 'encaixe', 'em_andamento'].contains(item.status))
+                    if (['agendado', 'encaixe', 'em_andamento']
+                        .contains(item.status))
                       OutlinedButton(
                         onPressed: () => _sendToWallet(item),
                         child: const Text('Carteira'),
                       ),
                     if (['agendado', 'encaixe'].contains(item.status))
                       OutlinedButton(
-                        onPressed: () => widget.viewModel.update(item.id, {'status': 'em_andamento'}),
+                        onPressed: () => widget.viewModel
+                            .update(item.id, {'status': 'em_andamento'}),
                         child: const Text('Iniciar'),
                       ),
-                    if (['agendado', 'encaixe', 'em_andamento'].contains(item.status))
+                    if (['agendado', 'encaixe', 'em_andamento']
+                        .contains(item.status))
                       OutlinedButton(
-                        onPressed: () => widget.viewModel.update(item.id, {'status': 'faltou'}),
+                        onPressed: () => widget.viewModel
+                            .update(item.id, {'status': 'faltou'}),
                         child: const Text('Faltou'),
                       ),
                     if (item.status != 'cancelado')
@@ -522,6 +570,14 @@ class _AgendaScreenState extends State<AgendaScreen> {
   }
 
   Future<void> _create() async {
+    if (_selectedBarberId == null || widget.catalog.items.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cadastre um profissional e ao menos um serviço.'),
+        ),
+      );
+      return;
+    }
     if (widget.catalog.items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -578,7 +634,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   DropdownMenuItem(value: 'encaixe', child: Text('Encaixe')),
                 ],
                 onChanged: (value) => status = value ?? status,
-                decoration: const InputDecoration(labelText: 'Tipo de agendamento'),
+                decoration:
+                    const InputDecoration(labelText: 'Tipo de agendamento'),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -604,6 +661,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
               'date': date.text.trim(),
               'time': time.text.trim(),
               'service': service,
+              'status': status,
             }),
             child: const Text('Agendar'),
           ),
@@ -618,7 +676,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
     try {
       await widget.viewModel.create({
-        'barberId': widget.user.id,
+        'barberId': _selectedBarberId,
         'serviceId': data['service'],
         'clientName': data['name'],
         'clientPhone': data['phone'],
@@ -658,7 +716,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
   Future<void> _sendToWallet(AppointmentDto item) async {
     try {
       final now = DateTime.now();
-      final reminderDate = now.add(const Duration(days: 15)).toIso8601String().split('T')[0];
+      final reminderDate =
+          now.add(const Duration(days: 15)).toIso8601String().split('T')[0];
       await widget.viewModel.update(item.id, {
         'status': 'em_carteira',
         'reminderDays': 15,
@@ -696,10 +755,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
     }
   }
 
-  Future<Map<String, dynamic>?> _showAppointmentForm(AppointmentDto? item) async {
+  Future<Map<String, dynamic>?> _showAppointmentForm(
+      AppointmentDto? item) async {
     final name = TextEditingController(text: item?.clientName ?? '');
     final phone = TextEditingController(text: item?.clientPhone ?? '');
-    final date = TextEditingController(text: item?.date ?? widget.viewModel.selectedDate);
+    final date = TextEditingController(
+        text: item?.date ?? widget.viewModel.selectedDate);
     final time = TextEditingController(text: item?.time ?? '09:00');
     var service = item?.serviceId ?? widget.catalog.items.first.id;
     var status = item?.status ?? 'agendado';
@@ -728,7 +789,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
                     .map(
                       (item) => DropdownMenuItem(
                         value: item.id,
-                        child: Text('${item.name} · R\$ ${item.price.toStringAsFixed(2)}'),
+                        child: Text(
+                            '${item.name} · R\$ ${item.price.toStringAsFixed(2)}'),
                       ),
                     )
                     .toList(),
@@ -741,11 +803,14 @@ class _AgendaScreenState extends State<AgendaScreen> {
                 items: const [
                   DropdownMenuItem(value: 'agendado', child: Text('Agendado')),
                   DropdownMenuItem(value: 'encaixe', child: Text('Encaixe')),
-                  DropdownMenuItem(value: 'em_andamento', child: Text('Em andamento')),
+                  DropdownMenuItem(
+                      value: 'em_andamento', child: Text('Em andamento')),
                   DropdownMenuItem(value: 'concluido', child: Text('Pago')),
-                  DropdownMenuItem(value: 'finalizado', child: Text('Finalizado')),
+                  DropdownMenuItem(
+                      value: 'finalizado', child: Text('Finalizado')),
                   DropdownMenuItem(value: 'faltou', child: Text('Faltou')),
-                  DropdownMenuItem(value: 'cancelado', child: Text('Cancelado')),
+                  DropdownMenuItem(
+                      value: 'cancelado', child: Text('Cancelado')),
                 ],
                 onChanged: (value) => status = value ?? status,
                 decoration: const InputDecoration(labelText: 'Status'),
@@ -753,7 +818,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
               const SizedBox(height: 8),
               TextField(
                 controller: date,
-                decoration: const InputDecoration(labelText: 'Data (AAAA-MM-DD)'),
+                decoration:
+                    const InputDecoration(labelText: 'Data (AAAA-MM-DD)'),
               ),
               const SizedBox(height: 8),
               TextField(

@@ -21,3 +21,20 @@ create table if not exists public.cash_entries (
   created_at timestamptz not null default now()
 );
 create index if not exists idx_cash_entries_shop_date on public.cash_entries(shop_name, entry_date);
+
+create table if not exists public.client_retention_actions (
+  id uuid primary key default gen_random_uuid(),
+  shop_name text not null,
+  barber_id uuid null,
+  client_key text not null,
+  client_name text,
+  client_phone text,
+  action text not null check (action in ('whatsapp','agendar','historico','recuperado','observacao')),
+  status_level text not null check (status_level in ('verde','amarelo','laranja','vermelho')),
+  days_without_return integer not null default 0,
+  unit_id text default 'all',
+  created_by uuid null,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_retention_actions_shop_client
+  on public.client_retention_actions(shop_name, client_key, created_at);

@@ -12,7 +12,13 @@ export async function listBarbers(req, res) {
 }
 
 export async function publicBarbers(req, res) {
-  res.json((await query(supabase.from('barbers').select(columns).eq('shop_name', req.params.shopName).eq('access_status', 'ativo').order('created_at'))).map(sanitizeBarber));
+  res.json(await query(
+    supabase.from('barbers')
+      .select('id,name,phone,shop_name,photo_url,work_start,work_end,off_days')
+      .eq('shop_name', req.params.shopName)
+      .eq('access_status', 'ativo')
+      .order('created_at'),
+  ));
 }
 
 export async function createBarber(req, res) {
@@ -29,6 +35,11 @@ export async function updateBarber(req, res) {
   const aliases = { photoUrl: 'photo_url', backgroundUrl: 'background_url', workStart: 'work_start', workEnd: 'work_end', offDays: 'off_days', commissionRate: 'commission_rate' };
   const allowed = ['name', 'phone', 'photo_url', 'background_url', 'work_start', 'work_end', 'off_days', 'commission_rate'];
   const patch = Object.fromEntries(Object.entries(req.body).map(([key, value]) => [aliases[key] || key, value]).filter(([key]) => allowed.includes(key)));
+  if (['barbeiro', 'barber'].includes(req.user.role)) delete patch.commission_rate;
   if (patch.commission_rate != null && (!Number.isFinite(Number(patch.commission_rate)) || Number(patch.commission_rate) < 0 || Number(patch.commission_rate) > 100)) throw new HttpError(400, 'Comissao deve estar entre 0 e 100');
+  const validTime = (value) => value == null || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value));
+  if (!validTime(patch.work_start) || !validTime(patch.work_end)) throw new HttpError(400, 'Horario invalido; use HH:MM');
+  if (patch.work_start && patch.work_end && patch.work_start >= patch.work_end) throw new HttpError(400, 'O fim do expediente deve ser posterior ao inicio');
+  if (!Object.keys(patch).length) throw new HttpError(400, 'Nenhuma alteracao valida informada');
   res.json(sanitizeBarber(await query(supabase.from('barbers').update(patch).eq('id', current.id).select(columns).single())));
 }

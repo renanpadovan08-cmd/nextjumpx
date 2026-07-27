@@ -1,4 +1,18 @@
 import '../../domain/repositories/i_catalog_repository.dart';
 import '../data_sources/catalog_remote_data_source.dart';
 import '../model/service_dto.dart';
-class CatalogRepositoryImpl implements ICatalogRepository { const CatalogRepositoryImpl(this._source); final CatalogRemoteDataSource _source; @override Future<List<ServiceDto>> list(String barberId) => _source.list(barberId); @override Future<ServiceDto> create(Map<String, dynamic> input) => _source.create(input); @override Future<void> delete(String id) => _source.delete(id); }
+
+class CatalogRepositoryImpl implements ICatalogRepository {
+  const CatalogRepositoryImpl(this._source);
+  final CatalogRemoteDataSource _source;
+  @override
+  Future<List<ServiceDto>> list([String? barberId]) => _source.list(barberId);
+  @override
+  Future<ServiceDto> create(Map<String, dynamic> input) =>
+      _source.create(input);
+  @override
+  Future<ServiceDto> update(String id, Map<String, dynamic> input) =>
+      _source.update(id, input);
+  @override
+  Future<void> delete(String id) => _source.delete(id);
+}

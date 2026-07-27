@@ -358,9 +358,10 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _change(
       Map<String, dynamic> item, Map<String, dynamic> value) async {
     final ok = await widget.viewModel.updateAccess('${item['id']}', value);
-    if (mounted)
+    if (mounted) {
       _snack(
           ok ? 'Acesso atualizado.' : 'Nao foi possivel atualizar o acesso.');
+    }
   }
 
   Future<void> _createDialog() async {
@@ -402,8 +403,9 @@ class _AdminScreenState extends State<AdminScreen> {
     phone.dispose();
     if (data == null) return;
     final ok = await widget.viewModel.createAccount(data);
-    if (mounted)
+    if (mounted) {
       _snack(ok ? 'Barbearia criada.' : 'Nao foi possivel criar a barbearia.');
+    }
   }
 
   Future<void> _planDialog(Map<String, dynamic> item) async {
@@ -471,18 +473,20 @@ class _AdminScreenState extends State<AdminScreen> {
     note.dispose();
     if (data == null) return;
     final ok = await widget.viewModel.updateSettings('${item['id']}', data);
-    if (mounted)
+    if (mounted) {
       _snack(ok
           ? 'Plano atualizado.'
           : 'Nao foi possivel atualizar o plano. Execute o SQL do Admin PRO no Supabase.');
+    }
   }
 
   Future<void> _markPaid(Map<String, dynamic> item) async {
     final ok = await widget.viewModel.markPaid('${item['id']}');
-    if (mounted)
+    if (mounted) {
       _snack(ok
           ? 'Pagamento registrado.'
           : 'Nao foi possivel registrar o pagamento.');
+    }
   }
 
   Future<void> _billingMessage(Map<String, dynamic> item) async {
@@ -492,9 +496,10 @@ class _AdminScreenState extends State<AdminScreen> {
     final message =
         'Ola, ${item['name'] ?? ''}! A mensalidade da ${item['shop_name'] ?? 'barbearia'} no valor de $fee vence dia $due. Pagamento: ${settings['payment_method'] ?? 'Pix'}.';
     await Clipboard.setData(ClipboardData(text: message));
-    if (mounted)
+    if (mounted) {
       _snack(
           'Mensagem de cobranca copiada. Abra o WhatsApp e cole para enviar.');
+    }
   }
 
   Future<void> _deleteDialog(Map<String, dynamic> item) async {
@@ -516,18 +521,20 @@ class _AdminScreenState extends State<AdminScreen> {
                 ]));
     if (confirm != true) return;
     final ok = await widget.viewModel.deleteAccount('${item['id']}');
-    if (mounted)
+    if (mounted) {
       _snack(
           ok ? 'Barbearia excluida.' : 'Nao foi possivel excluir a barbearia.');
+    }
   }
 
   Future<void> _setUnitStatus(Map<String, dynamic> item, String status) async {
     final ok =
         await widget.viewModel.updateUnitRequest('${item['id']}', status);
-    if (mounted)
+    if (mounted) {
       _snack(ok
           ? 'Solicitacao atualizada.'
           : 'Nao foi possivel atualizar a solicitacao.');
+    }
   }
 
   Future<void> _roleDialog(Map<String, dynamic> item, String role) async {
@@ -539,7 +546,7 @@ class _AdminScreenState extends State<AdminScreen> {
                 content: StatefulBuilder(
                     builder: (context, setDialog) => DropdownButtonFormField<
                             String>(
-                        value: selected,
+                        initialValue: selected,
                         decoration: const InputDecoration(labelText: 'Papel'),
                         items: const [
                           DropdownMenuItem(
@@ -602,8 +609,9 @@ class _AdminScreenState extends State<AdminScreen> {
     controller.dispose();
     if (value == null || value.length < 8) return;
     final ok = await widget.viewModel.resetPassword('${item['id']}', value);
-    if (mounted)
+    if (mounted) {
       _snack(ok ? 'Senha redefinida.' : 'Nao foi possivel redefinir a senha.');
+    }
   }
 
   Widget _field(TextEditingController controller, String label,

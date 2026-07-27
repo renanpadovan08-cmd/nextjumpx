@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/model/auth_user_dto.dart';
+import '../barbers/view_models/barbers_view_model.dart';
 import '../core/theme/zen_colors.dart';
 import '../core/widgets/zen_card.dart';
 import '../core/widgets/zen_page.dart';
@@ -8,10 +9,14 @@ import '../features/view_models/feature_view_models.dart';
 
 class FixedClientsScreen extends StatefulWidget {
   const FixedClientsScreen(
-      {super.key, required this.viewModel, required this.user});
+      {super.key,
+      required this.viewModel,
+      required this.user,
+      required this.barbers});
 
   final FixedClientsViewModel viewModel;
   final AuthUserDto user;
+  final BarbersViewModel barbers;
 
   @override
   State<FixedClientsScreen> createState() => _FixedClientsScreenState();
@@ -24,11 +29,15 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
     widget.viewModel
       ..addListener(_refresh)
       ..load();
+    widget.barbers
+      ..addListener(_refresh)
+      ..load();
   }
 
   @override
   void dispose() {
     widget.viewModel.removeListener(_refresh);
+    widget.barbers.removeListener(_refresh);
     super.dispose();
   }
 
@@ -122,13 +131,23 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
       text: DateTime.now().toIso8601String().substring(0, 10),
     );
     final time = TextEditingController(text: '09:00');
+    final package = TextEditingController(text: 'Plano mensal');
+    final duration = TextEditingController(text: '30');
+    final months = TextEditingController(text: '6');
+    var frequency = 'weekly';
+    var barberId = widget.barbers.items
+            .where((barber) => barber.id == widget.user.id)
+            .isNotEmpty
+        ? widget.user.id
+        : (widget.barbers.items.isEmpty ? '' : widget.barbers.items.first.id);
 
     final data = await showDialog<Map<String, String>>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Nova assinatura'),
-        content: SingleChildScrollView(
-          child: Column(
+        content: StatefulBuilder(
+          builder: (context, setDialogState) => SingleChildScrollView(
+              child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
@@ -139,10 +158,53 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
                   controller: phone,
                   decoration: const InputDecoration(labelText: 'WhatsApp')),
               const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: barberId.isEmpty ? null : barberId,
+                items: widget.barbers.items
+                    .map((barber) => DropdownMenuItem(
+                        value: barber.id, child: Text(barber.name)))
+                    .toList(),
+                onChanged: (value) => barberId = value ?? barberId,
+                decoration: const InputDecoration(labelText: 'Profissional'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                  controller: package,
+                  decoration:
+                      const InputDecoration(labelText: 'Nome do pacote')),
+              const SizedBox(height: 8),
               TextField(
                 controller: value,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Valor mensal'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: duration,
+                keyboardType: TextInputType.number,
+                decoration:
+                    const InputDecoration(labelText: 'Duração do atendimento'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: months,
+                keyboardType: TextInputType.number,
+                decoration:
+                    const InputDecoration(labelText: 'Quantidade de meses'),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: frequency,
+                items: const [
+                  DropdownMenuItem(value: 'weekly', child: Text('Toda semana')),
+                  DropdownMenuItem(
+                      value: 'biweekly', child: Text('A cada 15 dias')),
+                  DropdownMenuItem(
+                      value: 'monthly', child: Text('Uma vez por mês')),
+                ],
+                onChanged: (value) =>
+                    setDialogState(() => frequency = value ?? frequency),
+                decoration: const InputDecoration(labelText: 'Frequência'),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -155,7 +217,7 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
                   decoration:
                       const InputDecoration(labelText: 'Horário (HH:MM)')),
             ],
-          ),
+          )),
         ),
         actions: [
           TextButton(
@@ -168,6 +230,11 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
               'value': value.text.trim(),
               'date': date.text.trim(),
               'time': time.text.trim(),
+              'barberId': barberId,
+              'packageName': package.text.trim(),
+              'duration': duration.text.trim(),
+              'months': months.text.trim(),
+              'frequency': frequency,
             }),
             child: const Text('Criar'),
           ),
@@ -179,16 +246,23 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
     value.dispose();
     date.dispose();
     time.dispose();
+    package.dispose();
+    duration.dispose();
+    months.dispose();
     if (data == null || data['name']!.isEmpty) return;
 
     try {
       await widget.viewModel.create({
-        'barberId': widget.user.id,
+        'barberId': data['barberId'],
         'clientName': data['name'],
         'clientPhone': data['phone'],
         'startDate': data['date'],
         'time': data['time'],
         'monthlyValue': double.tryParse(data['value'] ?? '') ?? 0,
+        'packageName': data['packageName'],
+        'duration': int.tryParse(data['duration'] ?? '') ?? 30,
+        'months': int.tryParse(data['months'] ?? '') ?? 1,
+        'frequency': data['frequency'],
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

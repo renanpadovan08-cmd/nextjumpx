@@ -28,7 +28,9 @@ class ProModuleViewModel extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      data = module == ProModule.units ? await _repository.units() : await _repository.get(feature!);
+      data = module == ProModule.units
+          ? await _repository.units()
+          : await _repository.get(feature!);
       error = null;
     } catch (exception) {
       error = '$exception';
@@ -53,6 +55,30 @@ class ProModuleViewModel extends ChangeNotifier {
     try {
       await _repository.createCashEntry(body);
       await load(ProModule.cash);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> deleteCashEntry(String id) async {
+    try {
+      await _repository.deleteCashEntry(id);
+      await load(ProModule.cash);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> createRetentionAction(Map<String, dynamic> body) async {
+    try {
+      await _repository.createRetentionAction(body);
+      await load(ProModule.retention);
       return true;
     } catch (exception) {
       error = '$exception';
