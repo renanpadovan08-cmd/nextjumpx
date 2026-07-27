@@ -7,6 +7,7 @@ class ProModuleViewModel extends ChangeNotifier {
   final IOperationsRepository _repository;
   dynamic data;
   bool loading = false;
+  bool uploading = false;
   String? error;
 
   String? _feature(ProModule module) => switch (module) {
@@ -138,6 +139,22 @@ class ProModuleViewModel extends ChangeNotifier {
       error = '$exception';
       notifyListeners();
       return false;
+    }
+  }
+
+  Future<String?> uploadImage(Map<String, dynamic> body) async {
+    uploading = true;
+    error = null;
+    notifyListeners();
+    try {
+      final result = await _repository.uploadImage(body);
+      return result is Map ? '${result['url'] ?? ''}' : null;
+    } catch (exception) {
+      error = '$exception';
+      return null;
+    } finally {
+      uploading = false;
+      notifyListeners();
     }
   }
 }

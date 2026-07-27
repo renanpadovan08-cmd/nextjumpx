@@ -284,28 +284,77 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
     );
   }
 
-  Widget _catalogHeader(dynamic data) => ZenCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '${data['owner']['shop_name']}',
-              style: Theme.of(context).textTheme.headlineSmall,
+  Widget _catalogHeader(dynamic data) {
+    final owner = Map<String, dynamic>.from(data['owner'] as Map);
+    final logoUrl = '${owner['photo_url'] ?? ''}'.trim();
+    final backgroundUrl = '${owner['background_url'] ?? ''}'.trim();
+    return ZenCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (backgroundUrl.isNotEmpty) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: AspectRatio(
+                aspectRatio: 16 / 6,
+                child: Image.network(
+                  backgroundUrl,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                ),
+              ),
             ),
-            const SizedBox(height: 5),
-            const Text(
-              'Escolha profissional, serviço, data e horário.',
-              style: TextStyle(color: ZenColors.muted),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _copyPublicLink,
-              icon: const Icon(Icons.link),
-              label: const Text('Copiar link para compartilhar'),
-            ),
+            const SizedBox(height: 14),
           ],
-        ),
-      );
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 30,
+                backgroundColor: ZenColors.green.withValues(alpha: .16),
+                child: logoUrl.isEmpty
+                    ? const Icon(
+                        Icons.storefront,
+                        color: ZenColors.green,
+                        size: 30,
+                      )
+                    : ClipOval(
+                        child: Image.network(
+                          logoUrl,
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.storefront,
+                            color: ZenColors.green,
+                            size: 30,
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${owner['shop_name']}',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Escolha profissional, serviço, data e horário.',
+            style: TextStyle(color: ZenColors.muted),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _copyPublicLink,
+            icon: const Icon(Icons.link),
+            label: const Text('Copiar link para compartilhar'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _copyPublicLink() async {
     final current = Uri.base;
@@ -330,6 +379,20 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
               children: [
                 for (final barber in _barbers)
                   ChoiceChip(
+                    avatar: '${barber['photo_url'] ?? ''}'.trim().isEmpty
+                        ? const Icon(Icons.person, size: 18)
+                        : CircleAvatar(
+                            child: ClipOval(
+                              child: Image.network(
+                                '${barber['photo_url']}',
+                                width: 32,
+                                height: 32,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) =>
+                                    const Icon(Icons.person, size: 18),
+                              ),
+                            ),
+                          ),
                     label: Text('${barber['name']}'),
                     selected: _barberId == '${barber['id']}',
                     onSelected: (_) => _selectBarber('${barber['id']}'),

@@ -9,4 +9,5 @@ abstract interface class IOperationsRepository {
   Future<void> deleteCashEntry(String id);
   Future<dynamic> createCashClosure(Map<String, dynamic> body);
   Future<dynamic> createRetentionAction(Map<String, dynamic> body);
+  Future<dynamic> uploadImage(Map<String, dynamic> body);
 }

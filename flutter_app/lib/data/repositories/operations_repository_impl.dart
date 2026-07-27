@@ -37,4 +37,7 @@ class OperationsRepositoryImpl implements IOperationsRepository {
   @override
   Future<dynamic> createRetentionAction(Map<String, dynamic> body) =>
       _source.createRetentionAction(body);
+  @override
+  Future<dynamic> uploadImage(Map<String, dynamic> body) =>
+      _source.uploadImage(body);
 }

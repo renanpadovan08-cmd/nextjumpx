@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -784,10 +785,20 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           [
             _currentField('name', 'Responsável', '${_object['name'] ?? ''}'),
             _currentField('phone', 'WhatsApp', '${_object['phone'] ?? ''}'),
-            _currentField(
-                'photoUrl', 'URL da foto', '${_object['photo_url'] ?? ''}'),
-            _currentField('backgroundUrl', 'URL do fundo público',
-                '${_object['background_url'] ?? ''}'),
+            _profileImageField(
+              'photoUrl',
+              'Logo/foto da barbearia',
+              '${_object['photo_url'] ?? ''}',
+              kind: 'logo',
+              aspectRatio: 3,
+            ),
+            _profileImageField(
+              'backgroundUrl',
+              'Imagem de fundo do link público',
+              '${_object['background_url'] ?? ''}',
+              kind: 'background',
+              aspectRatio: 16 / 6,
+            ),
             const SizedBox(height: 4),
             Text(
                 'Login público: ${_object['login'] ?? ''} • Barbearia: ${_object['shop_name'] ?? ''}',
@@ -926,6 +937,124 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
               onChanged: (value) => _currentInputs[key] = value,
               decoration: InputDecoration(
                   labelText: label, hintText: time ? 'HH:MM' : null)));
+
+  Widget _profileImageField(
+    String key,
+    String label,
+    String initial, {
+    required String kind,
+    required double aspectRatio,
+  }) {
+    final value = _currentInputs[key] ?? initial;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: _inset(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 10),
+          if (value.isNotEmpty) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: aspectRatio,
+                child: Image.network(
+                  value,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const ColoredBox(
+                    color: Color(0xff111d29),
+                    child: Center(
+                      child: Text(
+                        'Não foi possível carregar esta URL.',
+                        style: TextStyle(color: ZenColors.muted),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          TextFormField(
+            key: ValueKey('$key-$value'),
+            initialValue: value,
+            onChanged: (text) => _currentInputs[key] = text.trim(),
+            decoration: const InputDecoration(
+              labelText: 'URL pública (opcional)',
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: widget.viewModel.uploading
+                ? null
+                : () => _pickAndUploadImage(key, kind),
+            icon: widget.viewModel.uploading
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.upload_file),
+            label: Text(
+              widget.viewModel.uploading
+                  ? 'Enviando imagem...'
+                  : 'Selecionar imagem',
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'JPG, PNG, WEBP ou GIF, com no máximo 4 MB.',
+            style: TextStyle(color: ZenColors.muted, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickAndUploadImage(String key, String kind) async {
+    final selection = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+      allowMultiple: false,
+      withData: true,
+    );
+    if (selection == null || selection.files.isEmpty) return;
+
+    final file = selection.files.single;
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      _message('Não foi possível ler a imagem selecionada.');
+      return;
+    }
+    if (bytes.length > 4 * 1024 * 1024) {
+      _message('A imagem deve ter no máximo 4 MB.');
+      return;
+    }
+
+    final url = await widget.viewModel.uploadImage({
+      'fileName': file.name,
+      'data': base64Encode(bytes),
+      'kind': kind,
+    });
+    if (!mounted) return;
+    if (url == null || url.isEmpty) {
+      _message(widget.viewModel.error ?? 'Não foi possível enviar a imagem.');
+      return;
+    }
+
+    setState(() => _currentInputs[key] = url);
+    final saved = await widget.viewModel.saveCurrent(
+      ProModule.profile,
+      {key: url},
+    );
+    if (mounted) {
+      _message(saved
+          ? 'Imagem enviada e salva com sucesso.'
+          : 'A imagem foi enviada, mas não foi possível salvar no perfil.');
+    }
+  }
 
   Future<void> _saveCurrent(ProModule module) async {
     final allowed = module == ProModule.profile

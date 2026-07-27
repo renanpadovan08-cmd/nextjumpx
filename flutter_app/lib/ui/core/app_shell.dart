@@ -111,7 +111,12 @@ class _AppShellState extends State<AppShell> {
         if (widget.app.user!.isAdmin) admin,
       ];
 
-  void _navigate(int page) => setState(() => index = page);
+  void _navigate(int page) {
+    setState(() => index = page);
+    if (page == 4) {
+      publicBooking.viewModel.load(widget.app.user!.login);
+    }
+  }
 
   String get _title => switch (index) {
         0 => 'Dashboard',

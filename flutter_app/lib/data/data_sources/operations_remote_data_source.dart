@@ -28,4 +28,6 @@ class OperationsRemoteDataSource {
       _api.post('/operations/cash/closures', body);
   Future<dynamic> createRetentionAction(Map<String, dynamic> body) =>
       _api.post('/operations/retention/actions', body);
+  Future<dynamic> uploadImage(Map<String, dynamic> body) =>
+      _api.post('/uploads/images', body);
 }
