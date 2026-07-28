@@ -3,7 +3,10 @@ import * as controller from '../controllers/adminController.js';
 import { requireAuth, requireRoles } from '../middleware/authMiddleware.js';
 import asyncHandler from '../wrapper.js';
 const router = Router();
-router.use(requireAuth, requireRoles('admin'));
+// Keep the administrator guard scoped to /admin. Registered at the router
+// root it also intercepted every route mounted after adminRoutes (including
+// /operations/profile) and returned 403 to valid shop managers.
+router.use('/admin', requireAuth, requireRoles('admin'));
 router.get('/admin/barbers', asyncHandler(controller.listShops));
 router.patch('/admin/barbers/:id/access', asyncHandler(controller.updateAccess));
 router.post('/admin/barbers/:id/password-reset', asyncHandler(controller.resetPassword));
