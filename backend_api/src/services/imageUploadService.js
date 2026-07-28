@@ -49,6 +49,10 @@ function safePathSegment(value) {
   return String(value || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_');
 }
 
+export function professionalImageBasePath(user, subjectId) {
+  return `${safePathSegment(user.shopId || user.id)}/${safePathSegment(subjectId || user.id)}/professional`;
+}
+
 export function decodeImageUpload({ fileName, contentType, data }) {
   const extension = String(fileName || '').split('.').pop()?.toLowerCase();
   const normalizedType = String(contentType || extensionTypes[extension] || '')
@@ -111,8 +115,11 @@ export async function uploadPublicImage(user, input) {
 
   const shop = safePathSegment(user.shopId || user.id);
   const owner = safePathSegment(user.id);
+  const subject = safePathSegment(input.subjectId || user.id);
   const basePath = kind === 'support'
     ? `${shop}/${owner}/support/${Date.now()}_${randomUUID()}`
+    : kind === 'professional'
+      ? professionalImageBasePath(user, subject)
     : `${shop}/${owner}/${kind}`;
   const path = `${basePath}.${image.extension}`;
   const bucket = supabase.storage.from(publicImagesBucket);

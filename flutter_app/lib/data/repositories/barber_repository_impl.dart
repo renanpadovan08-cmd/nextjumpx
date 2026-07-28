@@ -12,4 +12,7 @@ class BarberRepositoryImpl implements IBarberRepository {
   @override
   Future<BarberDto> update(String id, Map<String, dynamic> input) =>
       _source.update(id, input);
+  @override
+  Future<String> uploadPhoto(String id, Map<String, dynamic> input) =>
+      _source.uploadPhoto(id, input);
 }

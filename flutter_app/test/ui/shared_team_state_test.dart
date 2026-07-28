@@ -62,4 +62,8 @@ class _MemoryBarberRepository implements IBarberRepository {
   Future<BarberDto> update(String id, Map<String, dynamic> input) async {
     throw UnimplementedError();
   }
+
+  @override
+  Future<String> uploadPhoto(String id, Map<String, dynamic> input) async =>
+      'https://example.com/$id.jpg';
 }

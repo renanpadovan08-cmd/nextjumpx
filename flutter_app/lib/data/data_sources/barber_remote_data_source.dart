@@ -13,4 +13,12 @@ class BarberRemoteDataSource {
   Future<BarberDto> update(String id, Map<String, dynamic> input) async =>
       BarberDto.fromJson(
           await _api.patch('/barbers/$id', input) as Map<String, dynamic>);
+  Future<String> uploadPhoto(String id, Map<String, dynamic> input) async {
+    final result = await _api.post('/uploads/images', {
+      ...input,
+      'kind': 'professional',
+      'barberId': id,
+    }) as Map<String, dynamic>;
+    return '${result['url'] ?? ''}';
+  }
 }

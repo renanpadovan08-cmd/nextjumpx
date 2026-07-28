@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/model/auth_user_dto.dart';
@@ -62,8 +65,19 @@ class _BarbersScreenState extends State<BarbersScreen> {
                       leading: CircleAvatar(
                           backgroundColor:
                               ZenColors.green.withValues(alpha: .18),
-                          child:
-                              const Icon(Icons.person, color: ZenColors.green)),
+                          child: barber.photoUrl.trim().isEmpty
+                              ? const Icon(Icons.person, color: ZenColors.green)
+                              : ClipOval(
+                                  child: Image.network(
+                                    barber.photoUrl,
+                                    width: 40,
+                                    height: 40,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, __, ___) => const Icon(
+                                        Icons.person,
+                                        color: ZenColors.green),
+                                  ),
+                                )),
                       title: Text(barber.name,
                           style: const TextStyle(fontWeight: FontWeight.w900)),
                       subtitle: Text(
@@ -161,23 +175,91 @@ class _BarbersScreenState extends State<BarbersScreen> {
     final workEnd = TextEditingController(text: barber.workEnd);
     final offDays = TextEditingController(text: barber.offDays);
     final photoUrl = TextEditingController(text: barber.photoUrl);
-    final data = await showDialog<Map<String, String>>(
+    PlatformFile? selectedPhoto;
+    final data = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Editar ${barber.name}'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _field(name, 'Nome'),
-              _field(phone, 'WhatsApp'),
-              if (widget.user.isManager)
-                _field(commission, 'Comissão (%)', number: true),
-              _field(workStart, 'Início do expediente'),
-              _field(workEnd, 'Fim do expediente'),
-              _field(offDays, 'Folgas (0=dom, 1=seg...)'),
-              _field(photoUrl, 'URL da foto'),
-            ],
+        content: StatefulBuilder(
+          builder: (context, setDialogState) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _field(name, 'Nome'),
+                _field(phone, 'WhatsApp'),
+                if (widget.user.isManager)
+                  _field(commission, 'Comissão (%)', number: true),
+                _field(workStart, 'Início do expediente'),
+                _field(workEnd, 'Fim do expediente'),
+                _field(offDays, 'Folgas (0=dom, 1=seg...)'),
+                const SizedBox(height: 4),
+                CircleAvatar(
+                  radius: 44,
+                  backgroundColor: ZenColors.green.withValues(alpha: .18),
+                  child: selectedPhoto?.bytes != null
+                      ? ClipOval(
+                          child: Image.memory(
+                            selectedPhoto!.bytes!,
+                            width: 88,
+                            height: 88,
+                            fit: BoxFit.cover,
+                          ),
+                        )
+                      : photoUrl.text.trim().isEmpty
+                          ? const Icon(Icons.person,
+                              color: ZenColors.green, size: 42)
+                          : ClipOval(
+                              child: Image.network(
+                                photoUrl.text.trim(),
+                                width: 88,
+                                height: 88,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => const Icon(
+                                    Icons.person,
+                                    color: ZenColors.green,
+                                    size: 42),
+                              ),
+                            ),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final selection = await FilePicker.platform.pickFiles(
+                      type: FileType.custom,
+                      allowedExtensions: const [
+                        'jpg',
+                        'jpeg',
+                        'png',
+                        'webp',
+                        'gif'
+                      ],
+                      allowMultiple: false,
+                      withData: true,
+                    );
+                    if (selection == null || selection.files.isEmpty) return;
+                    final file = selection.files.single;
+                    if (file.bytes == null || file.bytes!.isEmpty) return;
+                    if (file.size > 4 * 1024 * 1024) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content:
+                                  Text('A imagem deve ter no máximo 4 MB.')),
+                        );
+                      }
+                      return;
+                    }
+                    setDialogState(() => selectedPhoto = file);
+                  },
+                  icon: const Icon(Icons.upload_file),
+                  label: Text(selectedPhoto == null
+                      ? 'Selecionar foto do computador'
+                      : 'Trocar foto selecionada'),
+                ),
+                const SizedBox(height: 8),
+                _field(photoUrl, 'URL pública da foto (opcional)'),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -208,6 +290,19 @@ class _BarbersScreenState extends State<BarbersScreen> {
     photoUrl.dispose();
     if (data == null || (data['name'] ?? '').isEmpty) return;
     try {
+      var resolvedPhotoUrl = '${data['photoUrl'] ?? ''}'.trim();
+      if (selectedPhoto?.bytes != null) {
+        final uploadedUrl = await widget.viewModel.uploadPhoto(
+          barber.id,
+          selectedPhoto!.name,
+          base64Encode(selectedPhoto!.bytes!),
+        );
+        if (uploadedUrl == null) {
+          throw Exception(widget.viewModel.error ??
+              'Não foi possível enviar a foto do profissional.');
+        }
+        resolvedPhotoUrl = uploadedUrl;
+      }
       await widget.viewModel.update(barber.id, {
         'name': data['name'],
         'phone': data['phone'],
@@ -217,7 +312,7 @@ class _BarbersScreenState extends State<BarbersScreen> {
         'workStart': data['workStart'],
         'workEnd': data['workEnd'],
         'offDays': data['offDays'],
-        'photoUrl': data['photoUrl'],
+        'photoUrl': resolvedPhotoUrl,
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

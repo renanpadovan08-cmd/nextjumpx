@@ -7,6 +7,7 @@ class BarbersViewModel extends ChangeNotifier {
   final IBarberRepository _repository;
   List<BarberDto> items = const [];
   bool loading = false;
+  bool uploading = false;
   String? error;
   Future<void> load() async {
     loading = true;
@@ -30,5 +31,25 @@ class BarbersViewModel extends ChangeNotifier {
   Future<void> update(String id, Map<String, dynamic> input) async {
     await _repository.update(id, input);
     await load();
+  }
+
+  Future<String?> uploadPhoto(
+      String id, String fileName, String base64Data) async {
+    uploading = true;
+    error = null;
+    notifyListeners();
+    try {
+      final url = await _repository.uploadPhoto(id, {
+        'fileName': fileName,
+        'data': base64Data,
+      });
+      return url.isEmpty ? null : url;
+    } catch (exception) {
+      error = '$exception';
+      return null;
+    } finally {
+      uploading = false;
+      notifyListeners();
+    }
   }
 }

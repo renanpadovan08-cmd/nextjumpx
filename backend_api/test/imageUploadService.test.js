@@ -7,6 +7,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'test-service-role-key';
 const {
   decodeImageUpload,
   maxImageBytes,
+  professionalImageBasePath,
 } = await import('../src/services/imageUploadService.js');
 
 const pngHeader = Buffer.from([
@@ -49,5 +50,17 @@ test('rejeita formato não permitido e arquivo acima do limite', () => {
       data: Buffer.alloc(maxImageBytes + 1).toString('base64'),
     }),
     /no máximo 4 MB/i,
+  );
+});
+
+test('separa a foto de cada profissional dentro da mesma barbearia', () => {
+  const user = { id: 'manager-1', shopId: 'shop-1' };
+  assert.equal(
+    professionalImageBasePath(user, 'barber-1'),
+    'shop-1/barber-1/professional',
+  );
+  assert.equal(
+    professionalImageBasePath(user, 'barber-2'),
+    'shop-1/barber-2/professional',
   );
 });
