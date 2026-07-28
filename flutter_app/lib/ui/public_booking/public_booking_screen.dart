@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../routing/public_booking_route.dart';
 import '../core/theme/zen_colors.dart';
 import '../core/widgets/zen_card.dart';
 import '../core/widgets/zen_page.dart';
@@ -346,23 +348,41 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
             style: TextStyle(color: ZenColors.muted),
           ),
           const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _copyPublicLink,
-            icon: const Icon(Icons.link),
-            label: const Text('Copiar link para compartilhar'),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              FilledButton.icon(
+                onPressed: _openPublicLink,
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Abrir página pública'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _copyPublicLink,
+                icon: const Icon(Icons.link),
+                label: const Text('Copiar link para compartilhar'),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
+  Uri _publicLink() => publicBookingUri(Uri.base, _login.text);
+
+  Future<void> _openPublicLink() async {
+    final opened = await launchUrl(
+      _publicLink(),
+      webOnlyWindowName: '_blank',
+    );
+    if (!opened && mounted) {
+      _message('Não foi possível abrir a página pública.');
+    }
+  }
+
   Future<void> _copyPublicLink() async {
-    final current = Uri.base;
-    final base = current.hasScheme
-        ? '${current.scheme}://${current.authority}${current.path}'
-        : '';
-    final link = '$base#book/${Uri.encodeComponent(_login.text.trim())}';
-    await Clipboard.setData(ClipboardData(text: link));
+    await Clipboard.setData(ClipboardData(text: _publicLink().toString()));
     if (mounted) _message('Link público copiado.');
   }
 

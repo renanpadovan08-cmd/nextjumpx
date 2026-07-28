@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dependency_injection/factories/app_view_model_factory.dart';
 import 'routing/app_navigator.dart';
+import 'routing/public_booking_route.dart';
 import 'ui/core/theme/zen_theme.dart';
 import 'ui/core/widgets/zen_app_background.dart';
 import 'ui/auth/login_screen.dart';
@@ -46,10 +47,7 @@ class _ZenBarberAppState extends State<ZenBarberApp> {
 
   @override
   Widget build(BuildContext context) {
-    final fragment = Uri.base.fragment;
-    final bookingLogin = fragment.startsWith('book/')
-        ? Uri.decodeComponent(fragment.substring('book/'.length))
-        : '';
+    final bookingLogin = bookingLoginFromUri(Uri.base);
     return MaterialApp(
         navigatorKey: navigatorKey,
         scaffoldMessengerKey: scaffoldMessengerKey,
