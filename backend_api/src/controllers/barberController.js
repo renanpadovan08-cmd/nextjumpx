@@ -1,4 +1,4 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { supabase, one, query } from '../services/supabaseService.js';
 import {
   assertShopAccess,

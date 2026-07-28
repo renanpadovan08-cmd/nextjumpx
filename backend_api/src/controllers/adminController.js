@@ -1,4 +1,4 @@
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { supabase, one, query } from '../services/supabaseService.js';
 import { HttpError } from '../utils/httpError.js';
