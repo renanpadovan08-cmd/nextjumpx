@@ -32,4 +32,29 @@ void main() {
     expect(accepted.requiresTermsAcceptance, isFalse);
     expect(admin.requiresTermsAcceptance, isFalse);
   });
+
+  test('reconhece aliases antigos e o proprietario migrado como gerente', () {
+    for (final role in [' Gerente ', 'manager', 'owner', 'dono']) {
+      final manager = AuthUserDto.fromJson({
+        'id': 'manager-1',
+        'role': role,
+      });
+      expect(manager.role, 'gerente');
+      expect(manager.isManager, isTrue);
+    }
+
+    final migratedOwner = AuthUserDto.fromJson({
+      'id': 'owner-1',
+      'shop_id': 'owner-1',
+      'role': 'barbeiro',
+    });
+    final regularBarber = AuthUserDto.fromJson({
+      'id': 'barber-2',
+      'shop_id': 'owner-1',
+      'role': 'barbeiro',
+    });
+
+    expect(migratedOwner.isManager, isTrue);
+    expect(regularBarber.isManager, isFalse);
+  });
 }

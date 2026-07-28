@@ -2,7 +2,8 @@ import bcrypt from 'bcryptjs';
 import { supabase, one, query } from '../services/supabaseService.js';
 import {
   assertShopAccess,
-  isBarberRole,
+  isAdminRole,
+  isRestrictedBarber,
   sanitizeBarber,
 } from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
@@ -11,7 +12,7 @@ const columns = 'id,name,login,phone,shop_name,shop_id,role,photo_url,background
 
 export async function listBarbers(req, res) {
   const shop = req.query.shopName || req.user.shopName;
-  if (req.user.role !== 'admin' && shop !== req.user.shopName) throw new HttpError(403, 'Barbearia nao autorizada');
+  if (!isAdminRole(req.user.role) && shop !== req.user.shopName) throw new HttpError(403, 'Barbearia nao autorizada');
   let builder = supabase.from('barbers').select(columns).order('created_at');
   builder = req.user.shopId && shop === req.user.shopName
     ? builder.eq('shop_id', req.user.shopId)
@@ -39,11 +40,11 @@ export async function createBarber(req, res) {
 export async function updateBarber(req, res) {
   const current = await one(supabase.from('barbers').select('*').eq('id', req.params.id), 'Barbeiro nao encontrado');
   assertShopAccess(req.user, current);
-  if (isBarberRole(req.user.role) && current.id !== req.user.id) throw new HttpError(403, 'Sem permissao para alterar este perfil');
+  if (isRestrictedBarber(req.user) && current.id !== req.user.id) throw new HttpError(403, 'Sem permissao para alterar este perfil');
   const aliases = { photoUrl: 'photo_url', backgroundUrl: 'background_url', workStart: 'work_start', workEnd: 'work_end', offDays: 'off_days', commissionRate: 'commission_rate' };
   const allowed = ['name', 'phone', 'photo_url', 'background_url', 'work_start', 'work_end', 'off_days', 'commission_rate'];
   const patch = Object.fromEntries(Object.entries(req.body).map(([key, value]) => [aliases[key] || key, value]).filter(([key]) => allowed.includes(key)));
-  if (isBarberRole(req.user.role)) delete patch.commission_rate;
+  if (isRestrictedBarber(req.user)) delete patch.commission_rate;
   if (patch.commission_rate != null && (!Number.isFinite(Number(patch.commission_rate)) || Number(patch.commission_rate) < 0 || Number(patch.commission_rate) > 100)) throw new HttpError(400, 'Comissao deve estar entre 0 e 100');
   const validTime = (value) => value == null || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value));
   if (!validTime(patch.work_start) || !validTime(patch.work_end)) throw new HttpError(400, 'Horario invalido; use HH:MM');

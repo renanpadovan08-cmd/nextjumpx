@@ -70,9 +70,13 @@ class _AppShellState extends State<AppShell> {
   late final ProModuleScreen cash = ProModuleScreen(
       module: ProModule.cash, viewModel: ProModuleFactory.build());
   late final ProModuleScreen profile = ProModuleScreen(
-      module: ProModule.profile, viewModel: ProModuleFactory.build());
+      module: ProModule.profile,
+      viewModel: ProModuleFactory.build(),
+      currentUserCanManage: widget.app.user!.isManager);
   late final ProModuleScreen hours = ProModuleScreen(
-      module: ProModule.hours, viewModel: ProModuleFactory.build());
+      module: ProModule.hours,
+      viewModel: ProModuleFactory.build(),
+      currentUserCanManage: widget.app.user!.isManager);
   late final ProModuleScreen support = ProModuleScreen(
       module: ProModule.support,
       viewModel: ProModuleFactory.build(),
@@ -185,7 +189,7 @@ class _AppShellState extends State<AppShell> {
   Widget _mobileShell() {
     final manager = widget.app.user!.isManager;
     final targets =
-        manager ? const [0, 1, 13, 12, 3] : const [0, 1, 13, 14, 15];
+        manager ? const [0, 1, 13, 12, 3] : const [0, 1, 13, 14, 16];
     final selected = targets.indexOf(index);
     return Scaffold(
       appBar: AppBar(
@@ -223,7 +227,7 @@ class _AppShellState extends State<AppShell> {
                 icon: Icon(Icons.repeat), label: 'Fixos')
           else
             const NavigationDestination(
-                icon: Icon(Icons.schedule), label: 'Horários'),
+                icon: Icon(Icons.support_agent_outlined), label: 'Suporte'),
         ],
       ),
     );
@@ -327,7 +331,8 @@ class _AppShellState extends State<AppShell> {
                       _nav('Serviços', Icons.design_services_outlined, 13),
                       _nav('Perfil / Configurações',
                           Icons.manage_accounts_outlined, 14),
-                      _nav('Funcionamento', Icons.schedule_outlined, 15),
+                      if (widget.app.user!.isManager)
+                        _nav('Funcionamento', Icons.schedule_outlined, 15),
                     ],
                     const SizedBox(height: 10),
                     _section('SUPORTE', suporteOpen,

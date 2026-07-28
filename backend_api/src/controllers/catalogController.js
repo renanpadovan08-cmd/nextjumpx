@@ -1,7 +1,7 @@
 import { supabase, one, query } from '../services/supabaseService.js';
 import {
   isAdminRole,
-  isBarberRole,
+  isRestrictedBarber,
   sameShop,
 } from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
@@ -9,7 +9,7 @@ import { HttpError } from '../utils/httpError.js';
 async function ensureServiceAccess(user, serviceId) {
   const current = await one(supabase.from('services').select('*,barbers!inner(id,shop_name,shop_id)').eq('id', serviceId), 'Servico nao encontrado');
   if (!isAdminRole(user.role) && !sameShop(user, current.barbers)) throw new HttpError(403, 'Servico fora da sua barbearia');
-  if (isBarberRole(user.role) && current.barber_id !== user.id) throw new HttpError(403, 'Voce so pode alterar seus proprios servicos');
+  if (isRestrictedBarber(user) && current.barber_id !== user.id) throw new HttpError(403, 'Voce so pode alterar seus proprios servicos');
   return current;
 }
 
@@ -19,11 +19,11 @@ export async function listServices(req, res) {
   if (barberId) {
     const barber = await one(supabase.from('barbers').select('id,shop_name,shop_id').eq('id', barberId), 'Barbeiro nao encontrado');
     if (!isAdminRole(req.user.role) && !sameShop(req.user, barber)) throw new HttpError(403, 'Barbeiro fora da sua barbearia');
-    if (isBarberRole(req.user.role) && barber.id !== req.user.id) throw new HttpError(403, 'Voce so pode acessar seus proprios servicos');
+    if (isRestrictedBarber(req.user) && barber.id !== req.user.id) throw new HttpError(403, 'Voce so pode acessar seus proprios servicos');
     builder.eq('barber_id', barberId);
-  } else if (req.user.role !== 'admin') {
+  } else if (!isAdminRole(req.user.role)) {
     let barbers;
-    if (isBarberRole(req.user.role)) {
+    if (isRestrictedBarber(req.user)) {
       barbers = [{ id: req.user.id }];
     } else {
       let shopBuilder = supabase.from('barbers').select('id');
@@ -42,7 +42,7 @@ export async function createService(req, res) {
   if (!name?.trim() || !barberId) throw new HttpError(400, 'Nome do servico e barbeiro sao obrigatorios');
   const barber = await one(supabase.from('barbers').select('id,shop_name,shop_id').eq('id', barberId), 'Barbeiro nao encontrado');
   if (!isAdminRole(req.user.role) && !sameShop(req.user, barber)) throw new HttpError(403, 'Barbeiro fora da sua barbearia');
-  if (isBarberRole(req.user.role) && barber.id !== req.user.id) throw new HttpError(403, 'Voce so pode criar seus proprios servicos');
+  if (isRestrictedBarber(req.user) && barber.id !== req.user.id) throw new HttpError(403, 'Voce so pode criar seus proprios servicos');
   if (!Number.isFinite(Number(price)) || Number(price) < 0) throw new HttpError(400, 'Preco do servico invalido');
   if (!Number.isInteger(Number(duration)) || Number(duration) < 1 || Number(duration) > 1440) throw new HttpError(400, 'Duracao do servico invalida');
   res.status(201).json(await query(supabase.from('services').insert({ barber_id: barberId, shop_id: barber.shop_id || req.user.shopId || null, name: name.trim(), price: Number(price), duration: Number(duration), icon_text: iconText || '', image_url: imageUrl || null, active: true }).select().single()));

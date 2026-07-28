@@ -1,7 +1,8 @@
 import { supabase, one, query } from '../services/supabaseService.js';
 import {
+  canManageShop,
   isAdminRole,
-  isBarberRole,
+  isRestrictedBarber,
   sameShop,
 } from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
@@ -14,7 +15,7 @@ const today = () => businessNow().date;
 async function scopedBarbers(user) {
   if (isAdminRole(user.role)) return query(supabase.from('barbers').select('id,name,commission_rate,shop_name,shop_id').order('name'));
   let builder = supabase.from('barbers').select('id,name,commission_rate,shop_name,shop_id').order('name');
-  if (isBarberRole(user.role)) builder = builder.eq('id', user.id);
+  if (isRestrictedBarber(user)) builder = builder.eq('id', user.id);
   else if (user.shopId) builder = builder.eq('shop_id', user.shopId);
   else builder = builder.eq('shop_name', user.shopName);
   return query(builder);
@@ -334,7 +335,9 @@ export async function profile(req, res) {
 
 export async function updateProfile(req, res) {
   const aliases = { photoUrl: 'photo_url', backgroundUrl: 'background_url' };
-  const allowed = ['name', 'phone', 'photo_url', 'background_url'];
+  const allowed = canManageShop(req.user)
+    ? ['name', 'phone', 'photo_url', 'background_url']
+    : ['name', 'phone', 'photo_url'];
   const patch = Object.fromEntries(Object.entries(req.body).map(([key, value]) => [aliases[key] || key, value]).filter(([key]) => allowed.includes(key)));
   if (!Object.keys(patch).length) throw new HttpError(400, 'Nenhuma alteracao de perfil informada');
   if (patch.name != null && !String(patch.name).trim()) throw new HttpError(400, 'Informe um nome valido');
@@ -355,12 +358,22 @@ export async function updateHours(req, res) {
   if (patch.work_start && patch.work_end && patch.work_start >= patch.work_end) throw new HttpError(400, 'O fim do expediente deve ser posterior ao inicio');
 
   try {
-    res.json(normalizeProfile(await query(supabase.from('barbers').update(patch).eq('id', req.user.id).select(profileColumns).single())));
+    let builder = supabase.from('barbers').update(patch);
+    if (req.user.shopId) builder = builder.eq('shop_id', req.user.shopId);
+    else if (req.user.shopName) builder = builder.eq('shop_name', req.user.shopName);
+    else builder = builder.eq('id', req.user.id);
+    await query(builder);
+    res.json(await fetchBarberProfile(req.user.id));
   } catch (error) {
     if (isLegacyProfileSchemaError(error.message)) {
       const legacyPatch = Object.fromEntries(Object.entries(patch).filter(([key]) => !['lunch_start', 'lunch_end', 'off_days'].includes(key)));
       if (!Object.keys(legacyPatch).length) throw new HttpError(400, 'Horas de intervalo nao sao compativeis com esta versao do banco de dados');
-      res.json(await query(supabase.from('barbers').update(legacyPatch).eq('id', req.user.id).select(baseProfileColumns).single()));
+      let legacyBuilder = supabase.from('barbers').update(legacyPatch);
+      if (req.user.shopId) legacyBuilder = legacyBuilder.eq('shop_id', req.user.shopId);
+      else if (req.user.shopName) legacyBuilder = legacyBuilder.eq('shop_name', req.user.shopName);
+      else legacyBuilder = legacyBuilder.eq('id', req.user.id);
+      await query(legacyBuilder);
+      res.json(await fetchBarberProfile(req.user.id));
       return;
     }
     throw error;

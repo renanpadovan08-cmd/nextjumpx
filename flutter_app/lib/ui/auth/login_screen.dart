@@ -49,8 +49,7 @@ class _TermsAcceptanceScreenState extends State<TermsAcceptanceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isBarber = widget.viewModel.user?.role == 'barber' ||
-        widget.viewModel.user?.role == 'barbeiro';
+    final isBarber = widget.viewModel.user?.isManager != true;
     final title = isBarber
         ? 'Termos de Uso do Barbeiro'
         : 'Termos de Uso do Gerente / Proprietário';

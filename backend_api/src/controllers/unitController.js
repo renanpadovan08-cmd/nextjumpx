@@ -1,4 +1,5 @@
 import { supabase, one, query } from '../services/supabaseService.js';
+import { isAdminRole } from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
 function isMissingTableError(message) {
   return /Could not find the table/i.test(String(message));
@@ -6,7 +7,7 @@ function isMissingTableError(message) {
 
 export async function list(req, res) {
   const builder = supabase.from('unit_requests').select('*').order('created_at', { ascending: false });
-  if (req.user.role !== 'admin') builder.eq('manager_id', req.user.id);
+  if (!isAdminRole(req.user.role)) builder.eq('manager_id', req.user.id);
   try {
     res.json(await query(builder));
   } catch (error) {

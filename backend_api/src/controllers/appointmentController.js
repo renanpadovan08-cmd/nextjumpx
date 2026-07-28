@@ -1,5 +1,9 @@
 import { supabase, one, query } from '../services/supabaseService.js';
-import { assertShopAccess, isBarberRole } from '../services/accessService.js';
+import {
+  assertShopAccess,
+  isAdminRole,
+  isRestrictedBarber,
+} from '../services/accessService.js';
 import { intervalsOverlap, validateSlot } from '../services/schedulePolicy.js';
 import { HttpError } from '../utils/httpError.js';
 
@@ -9,7 +13,7 @@ const validStatuses = [...activeStatuses, 'concluido', 'finalizado', 'faltou', '
 async function ensureBarberAccess(user, barberId) {
   const barber = await one(supabase.from('barbers').select('id,shop_name,shop_id').eq('id', barberId), 'Barbeiro nao encontrado');
   assertShopAccess(user, barber);
-  if (isBarberRole(user.role) && barber.id !== user.id) {
+  if (isRestrictedBarber(user) && barber.id !== user.id) {
     throw new HttpError(403, 'Voce so pode operar sua propria agenda');
   }
   return barber;
@@ -38,9 +42,9 @@ export async function listAppointments(req, res) {
   const barber = barberId ? await ensureBarberAccess(req.user, barberId) : null;
   let builder = supabase.from('appointments').select('*,services(name,price,duration),barbers(name,shop_name,shop_id)').order('date').order('time');
   if (barber) builder = builder.eq('barber_id', barber.id);
-  else if (req.user.role !== 'admin') {
+  else if (!isAdminRole(req.user.role)) {
     let shopBarbers;
-    if (isBarberRole(req.user.role)) {
+    if (isRestrictedBarber(req.user)) {
       shopBarbers = [{ id: req.user.id }];
     } else {
       let shopBuilder = supabase.from('barbers').select('id');
@@ -119,7 +123,7 @@ export async function createAppointment(req, res) {
 export async function updateAppointment(req, res) {
   const current = await one(supabase.from('appointments').select('*,barbers(shop_name,shop_id)').eq('id', req.params.id), 'Agendamento nao encontrado');
   assertShopAccess(req.user, { id: current.barber_id, ...current.barbers });
-  if (isBarberRole(req.user.role) && current.barber_id !== req.user.id) {
+  if (isRestrictedBarber(req.user) && current.barber_id !== req.user.id) {
     throw new HttpError(403, 'Voce so pode operar sua propria agenda');
   }
   const allowed = ['barber_id', 'service_id', 'client_name', 'client_phone', 'date', 'time', 'status', 'reminder_days', 'reminder_date', 'cancel_note', 'barberId', 'serviceId', 'clientName', 'clientPhone'];
@@ -146,7 +150,7 @@ export async function updateAppointment(req, res) {
 export async function deleteAppointment(req, res) {
   const current = await one(supabase.from('appointments').select('*,barbers(shop_name,shop_id)').eq('id', req.params.id), 'Agendamento nao encontrado');
   assertShopAccess(req.user, { id: current.barber_id, ...current.barbers });
-  if (isBarberRole(req.user.role) && current.barber_id !== req.user.id) {
+  if (isRestrictedBarber(req.user) && current.barber_id !== req.user.id) {
     throw new HttpError(403, 'Voce so pode operar sua propria agenda');
   }
   await query(supabase.from('appointments').update({

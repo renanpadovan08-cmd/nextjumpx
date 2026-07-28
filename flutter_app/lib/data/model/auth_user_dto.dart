@@ -6,6 +6,7 @@ class AuthUserDto {
       required this.shopName,
       required this.role,
       required this.accessStatus,
+      this.shopId = '',
       this.mustChangePassword = false,
       this.acceptedTerms = false,
       this.acceptedTermsVersion = ''});
@@ -16,6 +17,7 @@ class AuthUserDto {
   final String shopName;
   final String role;
   final String accessStatus;
+  final String shopId;
   final bool mustChangePassword;
   final bool acceptedTerms;
   final String acceptedTermsVersion;
@@ -25,17 +27,30 @@ class AuthUserDto {
       !isAdmin &&
       (!acceptedTerms || acceptedTermsVersion != currentTermsVersion);
 
-  bool get isAdmin => role == 'admin' || role == 'admin_master';
+  static String normalizeRole(Object? role) {
+    final value = '${role ?? ''}'.trim().toLowerCase();
+    if (const ['admin', 'admin_master', 'master', 'adm'].contains(value)) {
+      return 'admin';
+    }
+    if (const ['gerente', 'manager', 'owner', 'dono'].contains(value)) {
+      return 'gerente';
+    }
+    if (const ['barber', 'barbeiro'].contains(value)) return 'barber';
+    return value;
+  }
+
+  bool get isAdmin => role == 'admin';
   bool get isManager =>
-      isAdmin || role == 'gerente' || role == 'manager' || role == 'owner';
+      isAdmin || role == 'gerente' || (shopId.isNotEmpty && shopId == id);
 
   factory AuthUserDto.fromJson(Map<String, dynamic> json) => AuthUserDto(
         id: '${json['id']}',
         name: '${json['name'] ?? ''}',
         login: '${json['login'] ?? ''}',
         shopName: '${json['shop_name'] ?? ''}',
-        role: '${json['role'] ?? 'barbeiro'}',
+        role: normalizeRole(json['role'] ?? 'barbeiro'),
         accessStatus: '${json['access_status'] ?? ''}',
+        shopId: '${json['shop_id'] ?? ''}',
         mustChangePassword: json['must_change_password'] == true,
         acceptedTerms: json['accepted_terms'] == true,
         acceptedTermsVersion: '${json['accepted_terms_version'] ?? ''}',

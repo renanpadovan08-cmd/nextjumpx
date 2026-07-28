@@ -1,4 +1,5 @@
 import { supabase, query } from '../services/supabaseService.js';
+import { isRestrictedBarber } from '../services/accessService.js';
 import { businessNow } from '../services/schedulePolicy.js';
 
 function isInternalPayment(row) {
@@ -22,7 +23,7 @@ export async function summary(req, res) {
     .select('id,name,commission_rate')
   if (req.user.shopId) barberBuilder = barberBuilder.eq('shop_id', req.user.shopId);
   else barberBuilder = barberBuilder.eq('shop_name', req.user.shopName);
-  if (['barber', 'barbeiro'].includes(req.user.role)) {
+  if (isRestrictedBarber(req.user)) {
     barberBuilder = barberBuilder.eq('id', req.user.id);
   }
   const barbers = await query(barberBuilder);

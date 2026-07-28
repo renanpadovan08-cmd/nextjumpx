@@ -18,7 +18,7 @@ router.delete('/operations/cash/entries/:id', requireRoles('admin', 'gerente', '
 router.post('/operations/cash/closures', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.createCashClosure));
 router.get('/operations/profile', asyncHandler(controller.profile));
 router.patch('/operations/profile', asyncHandler(controller.updateProfile));
-router.get('/operations/hours', asyncHandler(controller.hours));
-router.patch('/operations/hours', asyncHandler(controller.updateHours));
+router.get('/operations/hours', requireRoles('admin', 'gerente'), asyncHandler(controller.hours));
+router.patch('/operations/hours', requireRoles('admin', 'gerente'), asyncHandler(controller.updateHours));
 router.get('/operations/whatsapp', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.whatsapp));
 export default router;

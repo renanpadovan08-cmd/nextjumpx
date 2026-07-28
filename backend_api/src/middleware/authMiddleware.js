@@ -1,4 +1,8 @@
 import jwt from 'jsonwebtoken';
+import {
+  canManageShop,
+  normalizeRole,
+} from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
 
 export function requireAuth(req, _res, next) {
@@ -12,16 +16,13 @@ export function requireAuth(req, _res, next) {
   }
 }
 
-const normalizeRole = (role) => {
-  const value = String(role || '').trim().toLowerCase();
-  if (value === 'barbeiro') return 'barber';
-  if (value === 'admin_master') return 'admin';
-  return value;
-};
-
 export function requireRoles(...roles) {
   const allowedRoles = new Set(roles.map(normalizeRole));
-  return (req, _res, next) => allowedRoles.has(normalizeRole(req.user.role))
-    ? next()
-    : next(new HttpError(403, 'Voce nao possui permissao para esta operacao'));
+  return (req, _res, next) => {
+    const currentRole = normalizeRole(req.user.role);
+    const managerAccess = allowedRoles.has('gerente') && canManageShop(req.user);
+    return allowedRoles.has(currentRole) || managerAccess
+      ? next()
+      : next(new HttpError(403, 'Voce nao possui permissao para esta operacao'));
+  };
 }

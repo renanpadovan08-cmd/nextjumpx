@@ -2,7 +2,10 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { supabase, one, query } from '../services/supabaseService.js';
-import { sanitizeBarber } from '../services/accessService.js';
+import {
+  normalizeRole,
+  sanitizeBarber,
+} from '../services/accessService.js';
 import {
   legacyHashPrefix,
   legacyPasswordHash,
@@ -41,7 +44,7 @@ function tokenFor(barber) {
     id: barber.id,
     name: barber.name,
     login: barber.login,
-    role: barber.role === 'admin_master' ? 'admin' : barber.role,
+    role: normalizeRole(barber.role),
     shopName: barber.shop_name,
     shopId: barber.shop_id,
   }, process.env.JWT_SECRET, { expiresIn: '8h' });

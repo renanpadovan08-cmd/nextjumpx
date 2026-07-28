@@ -32,11 +32,13 @@ class ProModuleScreen extends StatefulWidget {
     required this.module,
     required this.viewModel,
     this.currentUserIsAdmin = false,
+    this.currentUserCanManage = false,
   });
 
   final ProModule module;
   final ProModuleViewModel viewModel;
   final bool currentUserIsAdmin;
+  final bool currentUserCanManage;
 
   @override
   State<ProModuleScreen> createState() => _ProModuleScreenState();
@@ -801,25 +803,32 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
   }
 
   Widget _profile() => _surface(
-          'Perfil da barbearia',
-          'Informações do profissional autenticado e sua identidade no painel.',
+          widget.currentUserCanManage
+              ? 'Configurações da barbearia'
+              : 'Meu perfil',
+          widget.currentUserCanManage
+              ? 'Identidade da barbearia usada no painel e no link público.'
+              : 'Informações do seu perfil profissional.',
           [
             _currentField('name', 'Responsável', '${_object['name'] ?? ''}'),
             _currentField('phone', 'WhatsApp', '${_object['phone'] ?? ''}'),
             _profileImageField(
               'photoUrl',
-              'Logo/foto da barbearia',
+              widget.currentUserCanManage
+                  ? 'Logo/foto da barbearia'
+                  : 'Foto do perfil',
               '${_object['photo_url'] ?? ''}',
               kind: 'logo',
               aspectRatio: 3,
             ),
-            _profileImageField(
-              'backgroundUrl',
-              'Imagem de fundo do link público',
-              '${_object['background_url'] ?? ''}',
-              kind: 'background',
-              aspectRatio: 16 / 6,
-            ),
+            if (widget.currentUserCanManage)
+              _profileImageField(
+                'backgroundUrl',
+                'Imagem de fundo do link público',
+                '${_object['background_url'] ?? ''}',
+                kind: 'background',
+                aspectRatio: 16 / 6,
+              ),
             const SizedBox(height: 4),
             Text(
                 'Login público: ${_object['login'] ?? ''} • Barbearia: ${_object['shop_name'] ?? ''}',
@@ -827,7 +836,10 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
             const SizedBox(height: 12),
             Align(
                 alignment: Alignment.centerRight,
-                child: _action('Salvar configurações',
+                child: _action(
+                    widget.currentUserCanManage
+                        ? 'Salvar configurações'
+                        : 'Salvar perfil',
                     () => _saveCurrent(ProModule.profile),
                     green: true)),
           ]);
@@ -1079,7 +1091,12 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
 
   Future<void> _saveCurrent(ProModule module) async {
     final allowed = module == ProModule.profile
-        ? ['name', 'phone', 'photoUrl', 'backgroundUrl']
+        ? [
+            'name',
+            'phone',
+            'photoUrl',
+            if (widget.currentUserCanManage) 'backgroundUrl'
+          ]
         : ['workStart', 'workEnd', 'breakStart', 'breakEnd', 'offDays'];
     final body = <String, dynamic>{
       for (final key in allowed)

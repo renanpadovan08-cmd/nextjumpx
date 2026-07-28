@@ -1,14 +1,13 @@
 import { supabase, query } from '../services/supabaseService.js';
-import { isAdminRole, sameShop } from '../services/accessService.js';
+import {
+  canManageShop,
+  isAdminRole,
+  sameShop,
+} from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
 
 function isMissingTableError(message) {
   return /Could not find the table/i.test(String(message));
-}
-
-function canManageShop(user) {
-  return ['admin', 'admin_master', 'gerente', 'manager', 'owner']
-    .includes(String(user.role || '').toLowerCase());
 }
 
 export async function goals(req, res) {

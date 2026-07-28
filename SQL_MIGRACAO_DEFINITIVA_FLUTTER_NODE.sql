@@ -31,6 +31,7 @@ with owners as (
       when 'gerente' then 0
       when 'manager' then 0
       when 'owner' then 0
+      when 'dono' then 0
       when 'admin' then 1
       when 'admin_master' then 1
       else 2

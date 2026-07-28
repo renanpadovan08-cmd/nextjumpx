@@ -3,7 +3,10 @@ import test from 'node:test';
 
 import { requireRoles } from '../src/middleware/authMiddleware.js';
 import {
+  canManageShop,
   isBarberRole,
+  isManagerRole,
+  normalizeRole,
   sameShop,
 } from '../src/services/accessService.js';
 import {
@@ -46,6 +49,39 @@ test('normaliza os papeis antigos sem liberar perfis indevidos', () => {
     result = error;
   });
   assert.equal(result, undefined);
+
+  for (const role of [' Gerente ', 'manager', 'owner', 'dono']) {
+    managerOnly({ user: { role } }, null, (error) => {
+      result = error;
+    });
+    assert.equal(result, undefined);
+    assert.equal(isManagerRole(role), true);
+    assert.equal(normalizeRole(role), 'gerente');
+  }
+
+  managerOnly({
+    user: { id: 'owner-1', shopId: 'owner-1', role: 'barbeiro' },
+  }, null, (error) => {
+    result = error;
+  });
+  assert.equal(result, undefined);
+  assert.equal(canManageShop({
+    id: 'owner-1',
+    shopId: 'owner-1',
+    role: 'barbeiro',
+  }), true);
+
+  managerOnly({
+    user: { id: 'barber-2', shopId: 'owner-1', role: 'barbeiro' },
+  }, null, (error) => {
+    result = error;
+  });
+  assert.equal(result?.status, 403);
+  assert.equal(canManageShop({
+    id: 'unknown-1',
+    shopId: 'owner-1',
+    role: 'papel_desconhecido',
+  }), false);
 });
 
 test('trata barber e barbeiro igualmente e prioriza shop_id', () => {
