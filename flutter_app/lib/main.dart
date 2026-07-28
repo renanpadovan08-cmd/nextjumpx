@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'dependency_injection/factories/app_view_model_factory.dart';
 import 'routing/app_navigator.dart';
 import 'routing/public_booking_route.dart';
@@ -54,6 +55,11 @@ class _ZenBarberAppState extends State<ZenBarberApp> {
         debugShowCheckedModeBanner: false,
         title: 'NextJumpX',
         theme: ZenTheme.dark(),
+        locale: const Locale('pt', 'BR'),
+        supportedLocales: const [
+          Locale('pt', 'BR'),
+        ],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
         builder: (context, child) =>
             ZenAppBackground(child: child ?? const SizedBox()),
         home: bookingLogin.isNotEmpty

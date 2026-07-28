@@ -54,6 +54,7 @@ class _AppShellState extends State<AppShell> {
   late final PublicBookingScreen publicBooking = PublicBookingScreen(
     viewModel: FeatureFactories.publicBooking(),
     initialLogin: widget.app.user!.login,
+    showManagementActions: true,
   );
   late final ProModuleScreen wallet = ProModuleScreen(
       module: ProModule.wallet, viewModel: ProModuleFactory.build());

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/date_format.dart';
 import '../../routing/public_booking_route.dart';
 import '../core/theme/zen_colors.dart';
 import '../core/widgets/zen_card.dart';
@@ -15,10 +16,12 @@ class PublicBookingScreen extends StatefulWidget {
     super.key,
     required this.viewModel,
     this.initialLogin = '',
+    this.showManagementActions = false,
   });
 
   final PublicBookingViewModel viewModel;
   final String initialLogin;
+  final bool showManagementActions;
 
   @override
   State<PublicBookingScreen> createState() => _PublicBookingScreenState();
@@ -26,11 +29,10 @@ class PublicBookingScreen extends StatefulWidget {
 
 class _PublicBookingScreenState extends State<PublicBookingScreen> {
   late final TextEditingController _login;
+  late final TextEditingController _date;
+  late DateTime _selectedDate;
   final _clientName = TextEditingController();
   final _clientPhone = TextEditingController();
-  final _date = TextEditingController(
-    text: DateTime.now().toIso8601String().substring(0, 10),
-  );
   String? _barberId;
   String? _serviceId;
   String? _time;
@@ -39,6 +41,8 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
   void initState() {
     super.initState();
     _login = TextEditingController(text: widget.initialLogin);
+    _selectedDate = DateUtils.dateOnly(DateTime.now());
+    _date = TextEditingController(text: brazilianDate(_selectedDate));
     widget.viewModel.addListener(_refresh);
     if (widget.initialLogin.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openCatalog());
@@ -112,9 +116,11 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
   }
 
   Future<void> _loadAvailability() async {
-    if (_barberId == null || _date.text.isEmpty) return;
-    await widget.viewModel.loadAvailability(_barberId!, _date.text);
+    if (_barberId == null) return;
+    await widget.viewModel.loadAvailability(_barberId!, _dateIso);
   }
+
+  String get _dateIso => isoDate(_selectedDate);
 
   int _minutes(String value) {
     final parts = value.split(':').map(int.tryParse).toList();
@@ -133,7 +139,7 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
       'break_end': '${barber['break_end'] ?? ''}',
     };
     final raw = '${barber['off_days'] ?? ''}';
-    final day = DateTime.tryParse(_date.text)?.weekday.remainder(7) ?? 0;
+    final day = _selectedDate.weekday.remainder(7);
     if (raw.startsWith('SCHEDULE_JSON:')) {
       try {
         final parsed = jsonDecode(raw.substring('SCHEDULE_JSON:'.length));
@@ -161,7 +167,6 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
     final breakEnd = _minutes('${schedule['break_end'] ?? ''}');
     final hasBreak = '${schedule['break_start'] ?? ''}'.isNotEmpty &&
         '${schedule['break_end'] ?? ''}'.isNotEmpty;
-    final selectedDate = DateTime.tryParse(_date.text);
     final now = DateTime.now();
 
     bool overlaps(int firstStart, int firstDuration, int secondStart,
@@ -171,8 +176,7 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
 
     return [
       for (var value = start; value + duration <= end; value += 15)
-        if (!(selectedDate != null &&
-                DateUtils.isSameDay(selectedDate, now) &&
+        if (!(DateUtils.isSameDay(_selectedDate, now) &&
                 value <= now.hour * 60 + now.minute) &&
             !(hasBreak &&
                 overlaps(value, duration, breakStart, breakEnd - breakStart)) &&
@@ -187,15 +191,17 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
   }
 
   Future<void> _pickDate() async {
-    final current = DateTime.tryParse(_date.text) ?? DateTime.now();
+    final today = DateUtils.dateOnly(DateTime.now());
     final selected = await showDatePicker(
       context: context,
-      initialDate: current.isBefore(DateTime.now()) ? DateTime.now() : current,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      locale: const Locale('pt', 'BR'),
+      initialDate: _selectedDate.isBefore(today) ? today : _selectedDate,
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
     );
     if (selected == null) return;
-    _date.text = selected.toIso8601String().substring(0, 10);
+    _selectedDate = DateUtils.dateOnly(selected);
+    _date.text = brazilianDate(_selectedDate);
     _time = null;
     await _loadAvailability();
   }
@@ -213,7 +219,7 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
       'serviceId': _serviceId,
       'clientName': _clientName.text.trim(),
       'clientPhone': _clientPhone.text.trim(),
-      'date': _date.text,
+      'date': _dateIso,
       'time': _time,
     });
     if (!mounted) return;
@@ -233,55 +239,73 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
   @override
   Widget build(BuildContext context) {
     final data = widget.viewModel.data;
+    final owner = data is Map && data['owner'] is Map
+        ? Map<String, dynamic>.from(data['owner'] as Map)
+        : const <String, dynamic>{};
+    final backgroundUrl = '${owner['background_url'] ?? ''}'.trim();
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: SafeArea(
-        child: ZenPage(
-          title: 'Agendamento público',
-          children: [
-            if (widget.initialLogin.isEmpty)
-              ZenCard(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _login,
-                        decoration: const InputDecoration(
-                          labelText: 'Login público da barbearia',
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (backgroundUrl.isNotEmpty)
+            Image.network(
+              backgroundUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          if (backgroundUrl.isNotEmpty)
+            const ColoredBox(color: Color(0xaa030712)),
+          SafeArea(
+            child: ZenPage(
+              title: 'Agende seu horário',
+              children: [
+                if (widget.initialLogin.isEmpty)
+                  ZenCard(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _login,
+                            decoration: const InputDecoration(
+                              labelText: 'Login público da barbearia',
+                            ),
+                            onSubmitted: (_) => _openCatalog(),
+                          ),
                         ),
-                        onSubmitted: (_) => _openCatalog(),
-                      ),
+                        const SizedBox(width: 10),
+                        FilledButton(
+                          onPressed:
+                              widget.viewModel.loading ? null : _openCatalog,
+                          child: const Text('Abrir'),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 10),
-                    FilledButton(
-                      onPressed: widget.viewModel.loading ? null : _openCatalog,
-                      child: const Text('Abrir'),
-                    ),
-                  ],
-                ),
-              ),
-            if (widget.viewModel.error != null) ...[
-              const SizedBox(height: 12),
-              ZenCard(child: Text(widget.viewModel.error!)),
-            ],
-            if (widget.viewModel.loading && data == null)
-              const Padding(
-                padding: EdgeInsets.all(40),
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            if (data != null) ...[
-              _catalogHeader(data),
-              const SizedBox(height: 14),
-              _professionalPicker(),
-              const SizedBox(height: 14),
-              _servicePicker(),
-              const SizedBox(height: 14),
-              _dateAndSlots(),
-              const SizedBox(height: 14),
-              _clientForm(),
-            ],
-          ],
-        ),
+                  ),
+                if (widget.viewModel.error != null) ...[
+                  const SizedBox(height: 12),
+                  ZenCard(child: Text(widget.viewModel.error!)),
+                ],
+                if (widget.viewModel.loading && data == null)
+                  const Padding(
+                    padding: EdgeInsets.all(40),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                if (data != null) ...[
+                  _catalogHeader(data),
+                  const SizedBox(height: 14),
+                  _professionalPicker(),
+                  const SizedBox(height: 14),
+                  _servicePicker(),
+                  const SizedBox(height: 14),
+                  _dateAndSlots(),
+                  const SizedBox(height: 14),
+                  _clientForm(),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -289,25 +313,10 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
   Widget _catalogHeader(dynamic data) {
     final owner = Map<String, dynamic>.from(data['owner'] as Map);
     final logoUrl = '${owner['photo_url'] ?? ''}'.trim();
-    final backgroundUrl = '${owner['background_url'] ?? ''}'.trim();
     return ZenCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (backgroundUrl.isNotEmpty) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: AspectRatio(
-                aspectRatio: 16 / 6,
-                child: Image.network(
-                  backgroundUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-          ],
           Row(
             children: [
               CircleAvatar(
@@ -347,23 +356,25 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
             'Escolha profissional, serviço, data e horário.',
             style: TextStyle(color: ZenColors.muted),
           ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              FilledButton.icon(
-                onPressed: _openPublicLink,
-                icon: const Icon(Icons.open_in_new),
-                label: const Text('Abrir página pública'),
-              ),
-              OutlinedButton.icon(
-                onPressed: _copyPublicLink,
-                icon: const Icon(Icons.link),
-                label: const Text('Copiar link para compartilhar'),
-              ),
-            ],
-          ),
+          if (widget.showManagementActions) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                FilledButton.icon(
+                  onPressed: _openPublicLink,
+                  icon: const Icon(Icons.open_in_new),
+                  label: const Text('Abrir página pública'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _copyPublicLink,
+                  icon: const Icon(Icons.link),
+                  label: const Text('Copiar link para compartilhar'),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -466,6 +477,7 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
             onTap: _pickDate,
             decoration: const InputDecoration(
               labelText: 'Data',
+              hintText: 'DD/MM/AAAA',
               suffixIcon: Icon(Icons.calendar_month),
             ),
           ),

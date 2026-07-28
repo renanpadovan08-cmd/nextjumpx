@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/date_format.dart';
 import '../../data/model/auth_user_dto.dart';
 import '../../data/model/appointment_dto.dart';
 import '../catalog/view_models/catalog_view_model.dart';
@@ -552,7 +553,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
         .firstWhere((value) => value.isNotEmpty, orElse: () => 'cliente');
     final service = item.serviceName.isEmpty ? 'serviço' : item.serviceName;
     final price = _money(item.servicePrice);
-    final date = widget.viewModel.selectedDate;
+    final date = isoToBrazilianDate(widget.viewModel.selectedDate);
 
     final templates = {
       'confirm':
@@ -588,9 +589,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
     final name = TextEditingController();
     final phone = TextEditingController();
-    final date = TextEditingController(
-      text: widget.viewModel.selectedDate,
-    );
+    var selectedDate =
+        parseIsoDate(widget.viewModel.selectedDate) ?? DateTime.now();
+    final date = TextEditingController(text: brazilianDate(selectedDate));
     final time = TextEditingController(text: '09:00');
     var service = widget.catalog.items.first.id;
 
@@ -639,9 +640,27 @@ class _AgendaScreenState extends State<AgendaScreen> {
               ),
               const SizedBox(height: 8),
               TextField(
-                  controller: date,
-                  decoration:
-                      const InputDecoration(labelText: 'Data (AAAA-MM-DD)')),
+                controller: date,
+                readOnly: true,
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    locale: const Locale('pt', 'BR'),
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked != null) {
+                    selectedDate = picked;
+                    date.text = brazilianDate(picked);
+                  }
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Data',
+                  hintText: 'DD/MM/AAAA',
+                  suffixIcon: Icon(Icons.calendar_month),
+                ),
+              ),
               const SizedBox(height: 8),
               TextField(
                   controller: time,
@@ -658,7 +677,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
             onPressed: () => Navigator.pop(context, {
               'name': name.text.trim(),
               'phone': phone.text.trim(),
-              'date': date.text.trim(),
+              'date': isoDate(selectedDate),
               'time': time.text.trim(),
               'service': service,
               'status': status,
@@ -759,8 +778,11 @@ class _AgendaScreenState extends State<AgendaScreen> {
       AppointmentDto? item) async {
     final name = TextEditingController(text: item?.clientName ?? '');
     final phone = TextEditingController(text: item?.clientPhone ?? '');
-    final date = TextEditingController(
-        text: item?.date ?? widget.viewModel.selectedDate);
+    var selectedDate = parseIsoDate(
+          item?.date ?? widget.viewModel.selectedDate,
+        ) ??
+        DateTime.now();
+    final date = TextEditingController(text: brazilianDate(selectedDate));
     final time = TextEditingController(text: item?.time ?? '09:00');
     var service = item?.serviceId ?? widget.catalog.items.first.id;
     var status = item?.status ?? 'agendado';
@@ -818,8 +840,25 @@ class _AgendaScreenState extends State<AgendaScreen> {
               const SizedBox(height: 8),
               TextField(
                 controller: date,
-                decoration:
-                    const InputDecoration(labelText: 'Data (AAAA-MM-DD)'),
+                readOnly: true,
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    locale: const Locale('pt', 'BR'),
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime(2100),
+                  );
+                  if (picked != null) {
+                    selectedDate = picked;
+                    date.text = brazilianDate(picked);
+                  }
+                },
+                decoration: const InputDecoration(
+                  labelText: 'Data',
+                  hintText: 'DD/MM/AAAA',
+                  suffixIcon: Icon(Icons.calendar_month),
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
@@ -840,7 +879,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
               'clientName': name.text.trim(),
               'clientPhone': phone.text.trim(),
               'status': status,
-              'date': date.text.trim(),
+              'date': isoDate(selectedDate),
               'time': time.text.trim(),
             }),
             child: const Text('Salvar'),
