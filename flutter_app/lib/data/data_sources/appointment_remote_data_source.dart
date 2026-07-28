@@ -20,4 +20,8 @@ class AppointmentRemoteDataSource {
   Future<AppointmentDto> update(String id, Map<String, dynamic> input) async =>
       AppointmentDto.fromJson(
           await _api.patch('/appointments/$id', input) as Map<String, dynamic>);
+  Future<Map<String, dynamic>> createSelfClosure(
+          Map<String, dynamic> input) async =>
+      Map<String, dynamic>.from(
+          await _api.post('/operations/self-closures', input) as Map);
 }

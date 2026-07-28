@@ -50,7 +50,10 @@ class _AppShellState extends State<AppShell> {
       barbers: teamBarbers,
       user: widget.app.user!);
   late final OperationsScreen operations =
-      OperationsScreen(viewModel: FeatureFactories.operations());
+      OperationsScreen(
+        viewModel: FeatureFactories.operations(),
+        canManage: widget.app.user!.isManager,
+      );
   late final PublicBookingScreen publicBooking = PublicBookingScreen(
     viewModel: FeatureFactories.publicBooking(),
     initialLogin: widget.app.user!.login,
@@ -124,8 +127,49 @@ class _AppShellState extends State<AppShell> {
 
   void _navigate(int page) {
     setState(() => index = page);
-    if (page == 4) {
-      publicBooking.viewModel.load(widget.app.user!.login);
+    switch (page) {
+      case 0:
+        dashboard.viewModel.load();
+      case 1:
+        agenda.viewModel.load();
+      case 2:
+        wallet.viewModel.load(ProModule.wallet);
+      case 3:
+        fixedClients.viewModel.load();
+      case 4:
+        publicBooking.viewModel.load(widget.app.user!.login);
+      case 5:
+        whatsapp.viewModel.load(ProModule.whatsapp);
+      case 6:
+        operations.viewModel.load();
+      case 7:
+        pending.viewModel.load(ProModule.pending);
+      case 8:
+        reports.viewModel.load(ProModule.reports);
+      case 9:
+        commissions.viewModel.load(ProModule.commissions);
+      case 10:
+        retention.viewModel.load(ProModule.retention);
+      case 11:
+        cash.viewModel.load(ProModule.cash);
+      case 12:
+        barbers.viewModel.load();
+      case 13:
+        catalog.viewModel.load(
+          widget.app.user!.isManager ? null : widget.app.user!.id,
+        );
+      case 14:
+        profile.viewModel.load(ProModule.profile);
+      case 15:
+        hours.viewModel.load(ProModule.hours);
+      case 16:
+        support.viewModel.load(ProModule.support);
+      case 17:
+        units.viewModel.load(ProModule.units);
+      case 18:
+        updates.viewModel.load(ProModule.updates);
+      case 19:
+        if (widget.app.user!.isAdmin) admin.viewModel.load();
     }
   }
 
@@ -193,6 +237,10 @@ class _AppShellState extends State<AppShell> {
         manager ? const [0, 1, 13, 12, 3] : const [0, 1, 13, 14, 16];
     final selected = targets.indexOf(index);
     return Scaffold(
+      drawer: Drawer(
+        width: 280,
+        child: SafeArea(child: _sidebar()),
+      ),
       appBar: AppBar(
         title: Text('$_title · ${widget.app.user!.shopName}'),
         actions: [
@@ -313,6 +361,7 @@ class _AppShellState extends State<AppShell> {
                         () => setState(() => negocioOpen = !negocioOpen)),
                     if (negocioOpen) ...[
                       _nav('Dashboard PRO', Icons.grid_view_rounded, 0),
+                      _nav('Meu Negócio', Icons.storefront_outlined, 6),
                       if (widget.app.user!.isAdmin)
                         _nav('Gestao PRO', Icons.admin_panel_settings_outlined,
                             19),
@@ -323,7 +372,6 @@ class _AppShellState extends State<AppShell> {
                             8),
                         _nav('Comissões', Icons.payments_outlined, 9),
                         _nav('Retenção', Icons.track_changes_rounded, 10),
-                        _nav('Meu Negócio', Icons.storefront_outlined, 6),
                         _nav('Unidades', Icons.apartment_rounded, 17),
                         _nav('Controle de Caixa', Icons.point_of_sale_outlined,
                             11),
@@ -433,30 +481,34 @@ class _AppShellState extends State<AppShell> {
       padding: const EdgeInsets.only(top: 5, left: 10),
       child: Material(
         color: Colors.transparent,
-        child: InkWell(
-          onTap: () => _navigate(target),
-          borderRadius: BorderRadius.circular(11),
-          child: Ink(
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            decoration: BoxDecoration(
-              color:
-                  selected ? const Color(0xff063624) : const Color(0xff0a1420),
-              border: Border.all(
-                  color: selected ? ZenColors.green : Colors.transparent),
-              borderRadius: BorderRadius.circular(11),
-            ),
-            child: Row(children: [
-              Icon(icon,
-                  size: 15,
-                  color: selected
-                      ? const Color(0xff5bff90)
-                      : const Color(0xff7d91ac)),
-              const SizedBox(width: 9),
-              Expanded(
-                  child: Text(label,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+        child: Builder(
+          builder: (navContext) => InkWell(
+            onTap: () {
+              _navigate(target);
+              Scaffold.maybeOf(navContext)?.closeDrawer();
+            },
+            borderRadius: BorderRadius.circular(11),
+            child: Ink(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                color:
+                    selected ? const Color(0xff063624) : const Color(0xff0a1420),
+                border: Border.all(
+                    color: selected ? ZenColors.green : Colors.transparent),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Row(children: [
+                Icon(icon,
+                    size: 15,
+                    color: selected
+                        ? const Color(0xff5bff90)
+                        : const Color(0xff7d91ac)),
+                const SizedBox(width: 9),
+                Expanded(
+                    child: Text(label,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
                           color: selected
@@ -465,6 +517,7 @@ class _AppShellState extends State<AppShell> {
             ]),
           ),
         ),
+      ),
       ),
     );
   }

@@ -1,9 +1,20 @@
 import { supabase, query, one } from '../services/supabaseService.js';
 import { assertShopAccess } from '../services/accessService.js';
-import { intervalsOverlap, validateSlot } from '../services/schedulePolicy.js';
+import {
+  businessNow,
+  intervalsOverlap,
+  validateSlot,
+} from '../services/schedulePolicy.js';
+import { isInternalPayment } from '../services/servicePolicy.js';
 import { HttpError } from '../utils/httpError.js';
 
 const fixedName = (code) => `%${code}%`;
+const isValidIsoDate = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value || ''))) return false;
+  const parsed = new Date(`${value}T12:00:00Z`);
+  return Number.isFinite(parsed.getTime())
+    && parsed.toISOString().slice(0, 10) === value;
+};
 
 const isoAddMonths = (date, months) => {
   const [year, month, day] = String(date).split('-').map(Number);
@@ -67,14 +78,16 @@ export async function list(req, res) {
       clientPhone: '',
       barberName: row.barbers?.name || '',
     };
-    if (String(row.services?.name || '').toLowerCase().includes('parcela')) {
+    if (isInternalPayment(row)) {
       current.payments.push(row);
     } else {
       current.appointments.push(row);
     }
     current.clientName ||= String(row.client_name || '')
       .replace(/Parcela \d+\/\d+\s+/i, '')
+      .replace(/^Recebimento(?:\s+final)?(?:\s+assinatura)?\s*/i, '')
       .replace(code, '')
+      .replace(/^[-\s]+/, '')
       .trim();
     current.clientPhone ||= row.client_phone || '';
     contracts.set(code, current);
@@ -94,12 +107,22 @@ export async function create(req, res) {
     frequency = 'weekly',
     months = 1,
     monthlyValue = 0,
+    paymentMode = 'monthly',
+    firstBillingDate,
   } = req.body;
   if (![barberId, clientName, startDate, time].every(Boolean)) {
     throw new HttpError(400, 'Dados obrigatorios do cliente fixo ausentes');
   }
   if (!['weekly', 'biweekly', 'monthly'].includes(frequency)) {
     throw new HttpError(400, 'Frequencia invalida');
+  }
+  if (!['start', 'end', 'monthly', 'weekly'].includes(paymentMode)) {
+    throw new HttpError(400, 'Forma de pagamento invalida');
+  }
+  if (!isValidIsoDate(startDate)
+      || (['monthly', 'weekly'].includes(paymentMode)
+        && !isValidIsoDate(firstBillingDate || startDate))) {
+    throw new HttpError(400, 'Data da assinatura ou cobranca invalida');
   }
   const monthCount = Number(months);
   const serviceDuration = Number(duration);
@@ -158,6 +181,8 @@ export async function create(req, res) {
       String(packageName || 'Assinatura').trim() || 'Assinatura';
   const cleanClientName = String(clientName).trim();
   const cleanPhone = String(clientPhone).trim();
+  const billingStart = String(firstBillingDate || startDate);
+  const totalContractValue = value * monthCount;
   const scheduleService = await query(
     supabase.from('services').insert({
       barber_id: barberId,
@@ -168,11 +193,29 @@ export async function create(req, res) {
       active: true,
     }).select().single(),
   );
+  const paymentDefinition = {
+    monthly: {
+      name: `${cleanPackageName} - parcela mensal ${code}`,
+      price: value,
+    },
+    weekly: {
+      name: `${cleanPackageName} - parcela semanal ${code}`,
+      price: value / 4,
+    },
+    start: {
+      name: `${cleanPackageName} - recebimento imediato ${code}`,
+      price: totalContractValue,
+    },
+    end: {
+      name: `${cleanPackageName} - recebimento final ${code}`,
+      price: totalContractValue,
+    },
+  }[paymentMode];
   const paymentService = await query(
     supabase.from('services').insert({
       barber_id: barberId,
-      name: `${cleanPackageName} - parcela mensal ${code}`,
-      price: value,
+      name: paymentDefinition.name,
+      price: paymentDefinition.price,
       duration: 1,
       shop_id: barber.shop_id || req.user.shopId || null,
       active: true,
@@ -186,21 +229,55 @@ export async function create(req, res) {
     date,
     time,
     status: 'agendado',
-    shop_id: barber.shop_id || req.user.shopId || null,
-  }));
-  const payments = Array.from({ length: monthCount }, (_, index) => ({
+      shop_id: barber.shop_id || req.user.shopId || null,
+    }));
+  let payments;
+  if (paymentMode === 'monthly') {
+    payments = Array.from({ length: monthCount }, (_, index) => ({
+      client_name:
+        `Parcela ${index + 1}/${monthCount} ${cleanClientName} ${code}`,
+      date: isoAddMonths(billingStart, index),
+      status: 'em_carteira',
+    }));
+  } else if (paymentMode === 'weekly') {
+    const installmentCount = monthCount * 4;
+    payments = Array.from({ length: installmentCount }, (_, index) => ({
+      client_name:
+        `Parcela ${index + 1}/${installmentCount} ${cleanClientName} ${code}`,
+      date: isoAddDays(billingStart, index * 7),
+      status: 'em_carteira',
+    }));
+  } else if (paymentMode === 'end') {
+    payments = [{
+      client_name: `Recebimento final ${cleanClientName} ${code}`,
+      date: dates.at(-1),
+      status: 'em_carteira',
+    }];
+  } else {
+    payments = [{
+      client_name: `Recebimento assinatura ${cleanClientName} ${code}`,
+      date: dates[0],
+      status: 'concluido',
+    }];
+  }
+  payments = payments.map((payment) => ({
+    ...payment,
     barber_id: barberId,
     service_id: paymentService.id,
-    client_name:
-      `Parcela ${index + 1}/${monthCount} ${cleanClientName} ${code}`,
     client_phone: cleanPhone,
-    date: isoAddMonths(startDate, index),
     time: '00:00',
-    status: 'em_carteira',
+    reminder_date:
+      payment.status === 'em_carteira' ? payment.date : null,
+    reminder_days: payment.status === 'em_carteira' ? 0 : null,
     shop_id: barber.shop_id || req.user.shopId || null,
   }));
   await query(supabase.from('appointments').insert([...schedules, ...payments]));
-  res.status(201).json({ code, appointments: schedules.length, payments: payments.length });
+  res.status(201).json({
+    code,
+    appointments: schedules.length,
+    payments: payments.length,
+    paymentMode,
+  });
 }
 
 export async function pay(req, res) {
@@ -239,15 +316,24 @@ export async function cancel(req, res) {
   if (!barbers.length) throw new HttpError(404, 'Contrato nao encontrado');
   const rows = await query(
     supabase.from('appointments')
-      .select('id')
+      .select('id,status,date,time')
       .in('barber_id', barbers.map((barber) => barber.id))
       .ilike('client_name', fixedName(code)),
   );
   if (!rows.length) throw new HttpError(404, 'Contrato nao encontrado');
+  const current = businessNow();
+  const cancellable = rows.filter((row) =>
+    row.status === 'em_carteira'
+      || (row.status === 'agendado'
+        && (`${row.date} ${String(row.time || '').slice(0, 5)}`
+          >= `${current.date} ${current.time}`)));
+  if (!cancellable.length) {
+    throw new HttpError(409, 'Esse contrato nao possui horarios ou cobrancas futuras');
+  }
   await query(
     supabase.from('appointments')
       .update({ status: 'cancelado' })
-      .in('id', rows.map((row) => row.id)),
+      .in('id', cancellable.map((row) => row.id)),
   );
   res.status(204).end();
 }

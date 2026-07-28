@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/date_format.dart';
 import '../../data/model/auth_user_dto.dart';
 import '../barbers/view_models/barbers_view_model.dart';
 import '../core/theme/zen_colors.dart';
@@ -92,16 +93,22 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
                     for (final payment in (contract['payments'] as List? ?? []))
                       ListTile(
                         title: Text(
-                          '${payment['date']} · R\$ ${((payment['services']?['price'] as num?) ?? 0).toStringAsFixed(2)}',
+                          '${isoToBrazilianDate('${payment['date']}')} · R\$ ${((payment['services']?['price'] as num?) ?? 0).toStringAsFixed(2)}',
                         ),
-                        trailing: payment['status'] == 'concluido'
+                        trailing: ['concluido', 'finalizado']
+                                .contains(payment['status'])
                             ? const ZenStatusPill(
                                 label: 'Pago', color: ZenColors.green)
-                            : FilledButton(
-                                onPressed: () =>
-                                    widget.viewModel.pay('${payment['id']}'),
-                                child: const Text('Receber'),
-                              ),
+                            : payment['status'] == 'bonificado'
+                                ? const ZenStatusPill(
+                                    label: 'Bonificado',
+                                    color: ZenColors.muted,
+                                  )
+                                : FilledButton(
+                                    onPressed: () => widget.viewModel
+                                        .pay('${payment['id']}'),
+                                    child: const Text('Receber'),
+                                  ),
                       ),
                     Padding(
                       padding: const EdgeInsets.all(12),
@@ -127,14 +134,20 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
     final name = TextEditingController();
     final phone = TextEditingController();
     final value = TextEditingController();
+    var selectedDate = DateTime.now();
     final date = TextEditingController(
-      text: DateTime.now().toIso8601String().substring(0, 10),
+      text: brazilianDate(selectedDate),
+    );
+    var selectedBillingDate = selectedDate;
+    final billingDate = TextEditingController(
+      text: brazilianDate(selectedBillingDate),
     );
     final time = TextEditingController(text: '09:00');
     final package = TextEditingController(text: 'Plano mensal');
     final duration = TextEditingController(text: '30');
     final months = TextEditingController(text: '6');
     var frequency = 'weekly';
+    var paymentMode = 'monthly';
     var barberId = widget.barbers.items
             .where((barber) => barber.id == widget.user.id)
             .isNotEmpty
@@ -208,14 +221,86 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
               ),
               const SizedBox(height: 8),
               TextField(
-                  controller: date,
-                  decoration:
-                      const InputDecoration(labelText: 'Início (AAAA-MM-DD)')),
+                controller: date,
+                readOnly: true,
+                decoration: const InputDecoration(
+                  labelText: 'Início (DD/MM/AAAA)',
+                  suffixIcon: Icon(Icons.calendar_month),
+                ),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(const Duration(days: 3650)),
+                    locale: const Locale('pt', 'BR'),
+                  );
+                  if (picked != null) {
+                    setDialogState(() {
+                      selectedDate = picked;
+                      date.text = brazilianDate(picked);
+                    });
+                  }
+                },
+              ),
               const SizedBox(height: 8),
               TextField(
                   controller: time,
                   decoration:
                       const InputDecoration(labelText: 'Horário (HH:MM)')),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                initialValue: paymentMode,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'monthly',
+                    child: Text('Cobrança mensal'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'weekly',
+                    child: Text('Cobrança semanal'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'start',
+                    child: Text('Receber contrato no início'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'end',
+                    child: Text('Cobrar contrato no final'),
+                  ),
+                ],
+                onChanged: (value) => setDialogState(
+                  () => paymentMode = value ?? paymentMode,
+                ),
+                decoration:
+                    const InputDecoration(labelText: 'Forma de pagamento'),
+              ),
+              if (['monthly', 'weekly'].contains(paymentMode)) ...[
+                const SizedBox(height: 8),
+                TextField(
+                  controller: billingDate,
+                  readOnly: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Primeira cobrança (DD/MM/AAAA)',
+                    suffixIcon: Icon(Icons.calendar_month),
+                  ),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedBillingDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 3650)),
+                      locale: const Locale('pt', 'BR'),
+                    );
+                    if (picked != null) {
+                      setDialogState(() {
+                        selectedBillingDate = picked;
+                        billingDate.text = brazilianDate(picked);
+                      });
+                    }
+                  },
+                ),
+              ],
             ],
           )),
         ),
@@ -235,6 +320,9 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
               'duration': duration.text.trim(),
               'months': months.text.trim(),
               'frequency': frequency,
+              'paymentMode': paymentMode,
+              'firstBillingDate': isoDate(selectedBillingDate),
+              'startDate': isoDate(selectedDate),
             }),
             child: const Text('Criar'),
           ),
@@ -249,6 +337,7 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
     package.dispose();
     duration.dispose();
     months.dispose();
+    billingDate.dispose();
     if (data == null || data['name']!.isEmpty) return;
 
     try {
@@ -256,13 +345,15 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
         'barberId': data['barberId'],
         'clientName': data['name'],
         'clientPhone': data['phone'],
-        'startDate': data['date'],
+        'startDate': data['startDate'],
         'time': data['time'],
         'monthlyValue': double.tryParse(data['value'] ?? '') ?? 0,
         'packageName': data['packageName'],
         'duration': int.tryParse(data['duration'] ?? '') ?? 30,
         'months': int.tryParse(data['months'] ?? '') ?? 1,
         'frequency': data['frequency'],
+        'paymentMode': data['paymentMode'],
+        'firstBillingDate': data['firstBillingDate'],
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

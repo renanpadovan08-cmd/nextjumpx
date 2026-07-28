@@ -5,8 +5,13 @@ import '../core/widgets/zen_page.dart';
 import '../features/view_models/feature_view_models.dart';
 
 class OperationsScreen extends StatefulWidget {
-  const OperationsScreen({super.key, required this.viewModel});
+  const OperationsScreen({
+    super.key,
+    required this.viewModel,
+    this.canManage = true,
+  });
   final OperationsViewModel viewModel;
+  final bool canManage;
   @override
   State<OperationsScreen> createState() => _OperationsScreenState();
 }
@@ -96,10 +101,11 @@ class _OperationsScreenState extends State<OperationsScreen> {
       Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
           child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(value: 0, label: Text('Negócio')),
-                ButtonSegment(value: 1, label: Text('Unidades')),
-                ButtonSegment(value: 2, label: Text('Relatórios'))
+              segments: [
+                const ButtonSegment(value: 0, label: Text('Negócio')),
+                if (widget.canManage)
+                  const ButtonSegment(value: 1, label: Text('Unidades')),
+                const ButtonSegment(value: 2, label: Text('Relatórios'))
               ],
               selected: {
                 tab

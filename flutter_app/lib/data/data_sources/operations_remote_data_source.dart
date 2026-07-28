@@ -26,6 +26,13 @@ class OperationsRemoteDataSource {
       _api.delete('/operations/cash/entries/$id');
   Future<dynamic> createCashClosure(Map<String, dynamic> body) =>
       _api.post('/operations/cash/closures', body);
+  Future<dynamic> updateCashReceipt(String id, Map<String, dynamic> body) =>
+      _api.patch('/operations/cash/receipts/$id', body);
+  Future<dynamic> backup() => _api.get('/operations/backup');
+  Future<dynamic> createHoursClosure(Map<String, dynamic> body) =>
+      _api.post('/operations/hours/closures', body);
+  Future<void> deleteHoursClosure(String id) =>
+      _api.delete('/operations/hours/closures/$id');
   Future<dynamic> createRetentionAction(Map<String, dynamic> body) =>
       _api.post('/operations/retention/actions', body);
   Future<dynamic> uploadImage(Map<String, dynamic> body) =>

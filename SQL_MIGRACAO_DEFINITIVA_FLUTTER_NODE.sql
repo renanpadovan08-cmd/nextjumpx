@@ -70,6 +70,57 @@ from public.barbers b
 where a.barber_id = b.id
   and a.shop_id is null;
 
+-- O site legado criava estas tabelas em um arquivo separado. A migracao
+-- definitiva tambem as cria para funcionar em bancos que nunca aplicaram
+-- aquele complemento.
+create table if not exists public.cash_access_settings (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid,
+  shop_name text not null,
+  owner_barber_id uuid,
+  password_hash text not null,
+  updated_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.cash_movements (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid,
+  shop_name text not null,
+  type text not null check (type in ('entrada','saida','ajuste')),
+  source text not null default 'manual',
+  appointment_id uuid,
+  barber_id uuid,
+  client_name text,
+  description text,
+  amount numeric(12,2) not null default 0,
+  old_amount numeric(12,2),
+  new_amount numeric(12,2),
+  reason text,
+  week_key text,
+  created_by uuid,
+  created_by_name text,
+  cash_closure_id uuid,
+  closed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.cash_closures (
+  id uuid primary key default gen_random_uuid(),
+  shop_id uuid,
+  shop_name text not null,
+  period_start date,
+  period_end date,
+  total_in numeric(12,2) not null default 0,
+  total_out numeric(12,2) not null default 0,
+  balance numeric(12,2) not null default 0,
+  closed_by uuid,
+  closed_by_name text,
+  file_name text,
+  created_at timestamptz not null default now()
+);
+
 with owners as (
   select distinct on (shop_name) shop_name, shop_id
   from public.barbers

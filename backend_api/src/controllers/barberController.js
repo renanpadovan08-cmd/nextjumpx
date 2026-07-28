@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { supabase, one, query } from '../services/supabaseService.js';
 import {
   assertShopAccess,
+  canManageShop,
   isAdminRole,
   isRestrictedBarber,
   sanitizeBarber,
@@ -42,9 +43,53 @@ export async function updateBarber(req, res) {
   assertShopAccess(req.user, current);
   if (isRestrictedBarber(req.user) && current.id !== req.user.id) throw new HttpError(403, 'Sem permissao para alterar este perfil');
   const aliases = { photoUrl: 'photo_url', backgroundUrl: 'background_url', workStart: 'work_start', workEnd: 'work_end', offDays: 'off_days', commissionRate: 'commission_rate' };
-  const allowed = ['name', 'phone', 'photo_url', 'background_url', 'work_start', 'work_end', 'off_days', 'commission_rate'];
+  const allowed = [
+    'name',
+    'phone',
+    'photo_url',
+    'background_url',
+    'work_start',
+    'work_end',
+    'off_days',
+    'commission_rate',
+    ...(canManageShop(req.user) ? ['login', 'role', 'password'] : []),
+  ];
   const patch = Object.fromEntries(Object.entries(req.body).map(([key, value]) => [aliases[key] || key, value]).filter(([key]) => allowed.includes(key)));
+  if (canManageShop(req.user) && req.body.canSelfBlock != null) {
+    const flag = 'AGENDA_SELF_BLOCK=1';
+    const parts = String(current.activation_note || '')
+      .split('|')
+      .map((value) => value.trim())
+      .filter((value) =>
+        value && value.toUpperCase() !== flag);
+    if (req.body.canSelfBlock === true) parts.push(flag);
+    patch.activation_note = parts.join(' | ');
+  }
   if (isRestrictedBarber(req.user)) delete patch.commission_rate;
+  if (patch.login != null) {
+    patch.login = String(patch.login).trim().toLowerCase()
+      .replace(/\s+/g, '-');
+    if (!patch.login) throw new HttpError(400, 'Informe um login valido');
+  }
+  if (patch.role != null) {
+    const role = String(patch.role).trim().toLowerCase();
+    if (!['barber', 'barbeiro', 'gerente'].includes(role)) {
+      throw new HttpError(400, 'Perfil de acesso invalido');
+    }
+    patch.role = role === 'barbeiro' ? 'barber' : role;
+  }
+  if (patch.password != null) {
+    const password = String(patch.password);
+    delete patch.password;
+    if (password) {
+      if (password.length < 8) {
+        throw new HttpError(400, 'A nova senha precisa ter ao menos 8 caracteres');
+      }
+      patch.password_hash = await bcrypt.hash(password, 12);
+      patch.password = null;
+      patch.must_change_password = false;
+    }
+  }
   if (patch.commission_rate != null && (!Number.isFinite(Number(patch.commission_rate)) || Number(patch.commission_rate) < 0 || Number(patch.commission_rate) > 100)) throw new HttpError(400, 'Comissao deve estar entre 0 e 100');
   const validTime = (value) => value == null || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value));
   if (!validTime(patch.work_start) || !validTime(patch.work_end)) throw new HttpError(400, 'Horario invalido; use HH:MM');

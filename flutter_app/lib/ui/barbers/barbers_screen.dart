@@ -168,6 +168,8 @@ class _BarbersScreenState extends State<BarbersScreen> {
 
   Future<void> _edit(BarberDto barber) async {
     final name = TextEditingController(text: barber.name);
+    final login = TextEditingController(text: barber.login);
+    final password = TextEditingController();
     final phone = TextEditingController(text: barber.phone);
     final commission =
         TextEditingController(text: barber.commissionRate.toString());
@@ -175,6 +177,10 @@ class _BarbersScreenState extends State<BarbersScreen> {
     final workEnd = TextEditingController(text: barber.workEnd);
     final offDays = TextEditingController(text: barber.offDays);
     final photoUrl = TextEditingController(text: barber.photoUrl);
+    var role = ['gerente', 'manager', 'owner'].contains(barber.role)
+        ? 'gerente'
+        : 'barber';
+    var canSelfBlock = barber.canSelfBlock;
     PlatformFile? selectedPhoto;
     final data = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -186,6 +192,41 @@ class _BarbersScreenState extends State<BarbersScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 _field(name, 'Nome'),
+                if (widget.user.isManager) ...[
+                  _field(login, 'Login'),
+                  _field(
+                    password,
+                    'Nova senha (deixe vazio para manter)',
+                    obscure: true,
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: role,
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'barber',
+                        child: Text('Barbeiro'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'gerente',
+                        child: Text('Gerente'),
+                      ),
+                    ],
+                    onChanged: (value) =>
+                        setDialogState(() => role = value ?? role),
+                    decoration: const InputDecoration(labelText: 'Perfil'),
+                  ),
+                  const SizedBox(height: 9),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: canSelfBlock,
+                    onChanged: (value) =>
+                        setDialogState(() => canSelfBlock = value),
+                    title: const Text('Pode bloquear a própria agenda'),
+                    subtitle: const Text(
+                      'Libera bloqueios de emergência pelo profissional.',
+                    ),
+                  ),
+                ],
                 _field(phone, 'WhatsApp'),
                 if (widget.user.isManager)
                   _field(commission, 'Comissão (%)', number: true),
@@ -269,6 +310,10 @@ class _BarbersScreenState extends State<BarbersScreen> {
           FilledButton(
             onPressed: () => Navigator.pop(context, {
               'name': name.text.trim(),
+              'login': login.text.trim(),
+              'password': password.text,
+              'role': role,
+              'canSelfBlock': canSelfBlock,
               'phone': phone.text.trim(),
               'commission': commission.text.trim(),
               'workStart': workStart.text.trim(),
@@ -282,6 +327,8 @@ class _BarbersScreenState extends State<BarbersScreen> {
       ),
     );
     name.dispose();
+    login.dispose();
+    password.dispose();
     phone.dispose();
     commission.dispose();
     workStart.dispose();
@@ -305,6 +352,11 @@ class _BarbersScreenState extends State<BarbersScreen> {
       }
       await widget.viewModel.update(barber.id, {
         'name': data['name'],
+        if (widget.user.isManager) 'login': data['login'],
+        if (widget.user.isManager && '${data['password']}'.isNotEmpty)
+          'password': data['password'],
+        if (widget.user.isManager) 'role': data['role'],
+        if (widget.user.isManager) 'canSelfBlock': data['canSelfBlock'],
         'phone': data['phone'],
         if (widget.user.isManager)
           'commissionRate': double.tryParse(data['commission'] ?? '') ??

@@ -85,6 +85,13 @@ class _AgendaScreenState extends State<AgendaScreen> {
       child: ZenPage(
         title: 'Agenda premium',
         actions: [
+          if (widget.user.canSelfBlockAgenda &&
+              _selectedBarberId == widget.user.id)
+            OutlinedButton.icon(
+              onPressed: _createSelfClosure,
+              icon: const Icon(Icons.event_busy),
+              label: const Text('Bloquear minha agenda'),
+            ),
           FilledButton.icon(
             onPressed: _create,
             icon: const Icon(Icons.add),
@@ -439,7 +446,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                       'bloqueio'
                     ].contains(item.status))
                       FilledButton(
-                        onPressed: () => widget.viewModel.finish(item),
+                        onPressed: () => _finish(item),
                         child: const Text('Finalizar'),
                       ),
                     if (['agendado', 'encaixe', 'em_andamento']
@@ -541,6 +548,157 @@ class _AgendaScreenState extends State<AgendaScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Mensagem copiada para o WhatsApp.')),
       );
+    }
+  }
+
+  Future<void> _createSelfClosure() async {
+    final selected =
+        parseIsoDate(widget.viewModel.selectedDate) ?? DateTime.now();
+    var date = selected.isBefore(
+      DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day),
+    )
+        ? DateTime.now()
+        : selected;
+    final currentBarber = widget.barbers.items
+        .where((barber) => barber.id == widget.user.id)
+        .firstOrNull;
+    TimeOfDay parseTime(String value, TimeOfDay fallback) {
+      final parts = value.split(':').map(int.tryParse).toList();
+      if (parts.length < 2 || parts.any((part) => part == null)) {
+        return fallback;
+      }
+      return TimeOfDay(hour: parts[0]!, minute: parts[1]!);
+    }
+
+    var start = parseTime(
+      currentBarber?.workStart ?? '',
+      const TimeOfDay(hour: 8, minute: 0),
+    );
+    var end = parseTime(
+      currentBarber?.workEnd ?? '',
+      const TimeOfDay(hour: 20, minute: 0),
+    );
+    final reason = TextEditingController(text: 'compromisso inesperado');
+    String timeValue(TimeOfDay value) =>
+        '${value.hour.toString().padLeft(2, '0')}:'
+        '${value.minute.toString().padLeft(2, '0')}';
+
+    final data = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Bloquear minha agenda'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Data'),
+                subtitle: Text(brazilianDate(date)),
+                trailing: const Icon(Icons.calendar_month),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: date,
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                    locale: const Locale('pt', 'BR'),
+                  );
+                  if (picked != null) setDialogState(() => date = picked);
+                },
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Início'),
+                      subtitle: Text(timeValue(start)),
+                      onTap: () async {
+                        final picked = await showTimePicker(
+                          context: context,
+                          initialTime: start,
+                        );
+                        if (picked != null) {
+                          setDialogState(() => start = picked);
+                        }
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Fim'),
+                      subtitle: Text(timeValue(end)),
+                      onTap: () async {
+                        final picked = await showTimePicker(
+                          context: context,
+                          initialTime: end,
+                        );
+                        if (picked != null) setDialogState(() => end = picked);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              TextField(
+                controller: reason,
+                decoration: const InputDecoration(labelText: 'Motivo'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, {
+                'date': isoDate(date),
+                'start': timeValue(start),
+                'end': timeValue(end),
+                'reason': reason.text.trim(),
+              }),
+              child: const Text('Confirmar bloqueio'),
+            ),
+          ],
+        ),
+      ),
+    );
+    reason.dispose();
+    if (data == null) return;
+    try {
+      await widget.viewModel.createSelfClosure(data);
+      final affected = widget.viewModel.lastAffectedByBlock;
+      if (affected.isNotEmpty) {
+        final shop = widget.user.shopName;
+        final messages = affected.map((row) {
+          final name = '${row['client_name'] ?? 'cliente'}';
+          final firstName = name.trim().split(RegExp(r'\s+')).first;
+          return 'WhatsApp: ${row['client_phone'] ?? ''}\n'
+              'Olá $firstName, tudo bem? Precisei bloquear minha agenda '
+              'por motivo de ${data['reason']}. Seu horário de '
+              '${brazilianDate(date)} às ${row['time']} na $shop precisa '
+              'ser reagendado. Peço desculpas pelo transtorno.';
+        }).join('\n\n---\n\n');
+        await Clipboard.setData(ClipboardData(text: messages));
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              affected.isEmpty
+                  ? 'Agenda bloqueada.'
+                  : 'Agenda bloqueada. ${affected.length} mensagem(ns) para clientes foram copiadas.',
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
     }
   }
 
@@ -732,14 +890,166 @@ class _AgendaScreenState extends State<AgendaScreen> {
     }
   }
 
-  Future<void> _sendToWallet(AppointmentDto item) async {
+  Future<void> _finish(AppointmentDto item) async {
+    var reminderDays = 15;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Como foi o pagamento?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Dê baixa agora, informe outro valor final ou envie a cobrança para a carteira.',
+              ),
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, 'received'),
+                child: const Text('Recebido agora'),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(context, 'amount'),
+                child: const Text('Valor a receber'),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<int>(
+                initialValue: reminderDays,
+                decoration: const InputDecoration(labelText: 'Lembrar em'),
+                items: const [
+                  DropdownMenuItem(value: 15, child: Text('15 dias')),
+                  DropdownMenuItem(value: 30, child: Text('30 dias')),
+                  DropdownMenuItem(value: 45, child: Text('45 dias')),
+                ],
+                onChanged: (value) => setDialogState(
+                  () => reminderDays = value ?? reminderDays,
+                ),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(context, 'wallet'),
+                child: const Text('Enviar para carteira'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Voltar'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == null) return;
+
+    if (action == 'wallet') {
+      await _sendToWallet(item, reminderDays: reminderDays);
+      return;
+    }
+
+    var receivedAmount = item.servicePrice;
+    if (action == 'amount') {
+      if (!mounted) return;
+      final controller = TextEditingController(
+        text: item.servicePrice.toStringAsFixed(2).replaceAll('.', ','),
+      );
+      final amount = await showDialog<double>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Valor final recebido'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Valor a receber',
+              helperText: 'Valor original: ${_money(item.servicePrice)}',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final normalized = controller.text
+                    .replaceAll('R\$', '')
+                    .replaceAll(' ', '')
+                    .replaceAll(',', '.');
+                Navigator.pop(context, double.tryParse(normalized));
+              },
+              child: const Text('Confirmar'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (amount == null) return;
+      if (amount < 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Informe um valor válido.')),
+          );
+        }
+        return;
+      }
+      receivedAmount = amount;
+    }
+
+    try {
+      await widget.viewModel.update(item.id, {
+        'status': 'concluido',
+        'received_amount': receivedAmount,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Recebimento registrado: ${_money(receivedAmount)}.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
+  }
+
+  Future<void> _sendToWallet(
+    AppointmentDto item, {
+    int? reminderDays,
+  }) async {
+    var days = reminderDays;
+    days ??= await showDialog<int>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Quando lembrar da cobrança?'),
+        children: [
+          for (final value in const [15, 30, 45])
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, value),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                child: Text('Lembrar em $value dias'),
+              ),
+            ),
+        ],
+      ),
+    );
+    if (days == null) return;
+
     try {
       final now = DateTime.now();
       final reminderDate =
-          now.add(const Duration(days: 15)).toIso8601String().split('T')[0];
+          now.add(Duration(days: days)).toIso8601String().split('T')[0];
       await widget.viewModel.update(item.id, {
         'status': 'em_carteira',
-        'reminderDays': 15,
+        'reminderDays': days,
         'reminderDate': reminderDate,
       });
       if (mounted) {

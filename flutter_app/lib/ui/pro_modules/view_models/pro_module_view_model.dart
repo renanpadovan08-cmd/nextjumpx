@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import '../../../domain/repositories/i_operations_repository.dart';
 import '../pro_module_screen.dart';
@@ -9,6 +11,7 @@ class ProModuleViewModel extends ChangeNotifier {
   bool loading = false;
   bool uploading = false;
   String? error;
+  String lastCashCsv = '';
   List<Map<String, dynamic>> supportConversations = [];
   List<Map<String, dynamic>> supportMessages = [];
   String? activeConversationId;
@@ -174,8 +177,55 @@ class ProModuleViewModel extends ChangeNotifier {
 
   Future<bool> createCashClosure(String month) async {
     try {
-      await _repository.createCashClosure({'month': month});
+      final result = await _repository.createCashClosure({'month': month});
+      lastCashCsv = result is Map ? '${result['csv'] ?? ''}' : '';
       await load(ProModule.cash);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> updateCashReceipt(String id, Map<String, dynamic> body) async {
+    try {
+      await _repository.updateCashReceipt(id, body);
+      await load(ProModule.cash);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<String?> createBackupJson() async {
+    try {
+      return jsonEncode(await _repository.backup());
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<bool> createHoursClosure(Map<String, dynamic> body) async {
+    try {
+      await _repository.createHoursClosure(body);
+      await load(ProModule.hours);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> deleteHoursClosure(String id) async {
+    try {
+      await _repository.deleteHoursClosure(id);
+      await load(ProModule.hours);
       return true;
     } catch (exception) {
       error = '$exception';

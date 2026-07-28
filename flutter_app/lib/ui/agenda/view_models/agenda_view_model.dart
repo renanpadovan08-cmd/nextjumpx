@@ -11,6 +11,7 @@ class AgendaViewModel extends ChangeNotifier {
   String? error;
   String selectedDate = DateTime.now().toIso8601String().substring(0, 10);
   String? selectedBarberId;
+  List<Map<String, dynamic>> lastAffectedByBlock = const [];
 
   Future<void> load({String? barberId, String? date}) async {
     loading = true;
@@ -133,6 +134,14 @@ class AgendaViewModel extends ChangeNotifier {
 
   Future<void> update(String id, Map<String, dynamic> value) async {
     await _repository.update(id, value);
+    await load();
+  }
+
+  Future<void> createSelfClosure(Map<String, dynamic> value) async {
+    final result = await _repository.createSelfClosure(value);
+    lastAffectedByBlock = List<Map<String, dynamic>>.from(
+      (result['affected'] as List?) ?? const [],
+    );
     await load();
   }
 }

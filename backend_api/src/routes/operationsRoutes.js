@@ -16,9 +16,15 @@ router.get('/operations/cash', requireRoles('admin', 'gerente', 'manager', 'owne
 router.post('/operations/cash/entries', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.createCashEntry));
 router.delete('/operations/cash/entries/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.deleteCashEntry));
 router.post('/operations/cash/closures', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.createCashClosure));
+router.patch('/operations/cash/receipts/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.updateCashReceipt));
 router.get('/operations/profile', asyncHandler(controller.profile));
 router.patch('/operations/profile', asyncHandler(controller.updateProfile));
 router.get('/operations/hours', requireRoles('admin', 'gerente'), asyncHandler(controller.hours));
 router.patch('/operations/hours', requireRoles('admin', 'gerente'), asyncHandler(controller.updateHours));
+router.post('/operations/hours/closures', requireRoles('admin', 'gerente'), asyncHandler(controller.createHoursClosure));
+router.delete('/operations/hours/closures/:id', requireRoles('admin', 'gerente'), asyncHandler(controller.deleteHoursClosure));
+router.post('/operations/self-closures', asyncHandler(controller.createSelfClosure));
+router.delete('/operations/self-closures/:id', asyncHandler(controller.deleteSelfClosure));
 router.get('/operations/whatsapp', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.whatsapp));
+router.get('/operations/backup', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.backup));
 export default router;

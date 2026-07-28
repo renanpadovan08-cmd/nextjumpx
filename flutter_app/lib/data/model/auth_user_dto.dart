@@ -9,7 +9,8 @@ class AuthUserDto {
       this.shopId = '',
       this.mustChangePassword = false,
       this.acceptedTerms = false,
-      this.acceptedTermsVersion = ''});
+      this.acceptedTermsVersion = '',
+      this.activationNote = ''});
 
   final String id;
   final String name;
@@ -21,6 +22,7 @@ class AuthUserDto {
   final bool mustChangePassword;
   final bool acceptedTerms;
   final String acceptedTermsVersion;
+  final String activationNote;
 
   static const currentTermsVersion = 'v1.0';
   bool get requiresTermsAcceptance =>
@@ -42,6 +44,11 @@ class AuthUserDto {
   bool get isAdmin => role == 'admin';
   bool get isManager =>
       isAdmin || role == 'gerente' || (shopId.isNotEmpty && shopId == id);
+  bool get canSelfBlockAgenda =>
+      isManager ||
+      activationNote.toUpperCase().split('|').any(
+            (value) => value.trim() == 'AGENDA_SELF_BLOCK=1',
+          );
 
   factory AuthUserDto.fromJson(Map<String, dynamic> json) => AuthUserDto(
         id: '${json['id']}',
@@ -54,5 +61,6 @@ class AuthUserDto {
         mustChangePassword: json['must_change_password'] == true,
         acceptedTerms: json['accepted_terms'] == true,
         acceptedTermsVersion: '${json['accepted_terms_version'] ?? ''}',
+        activationNote: '${json['activation_note'] ?? ''}',
       );
 }

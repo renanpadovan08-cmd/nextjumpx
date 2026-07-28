@@ -43,11 +43,14 @@ class OperationsViewModel extends ChangeNotifier {
   dynamic data;
   bool loading = false;
   String? error;
-  Future<void> load(int tab) async {
+  int activeTab = 0;
+
+  Future<void> load([int? tab]) async {
+    activeTab = tab ?? activeTab;
     loading = true;
     notifyListeners();
     try {
-      data = await _load(tab);
+      data = await _load(activeTab);
       error = null;
     } catch (e) {
       error = '$e';
@@ -59,7 +62,7 @@ class OperationsViewModel extends ChangeNotifier {
   Future<bool> saveGoal(Map<String, dynamic> body) async {
     try {
       await _load.r.saveBusinessGoal(body);
-      await load(0);
+      await load();
       return true;
     } catch (exception) {
       error = '$exception';

@@ -57,4 +57,27 @@ void main() {
     expect(migratedOwner.isManager, isTrue);
     expect(regularBarber.isManager, isFalse);
   });
+
+  test('respeita a permissao legada de bloqueio proprio da agenda', () {
+    final allowed = AuthUserDto.fromJson({
+      'id': 'barber-1',
+      'name': 'Profissional',
+      'login': 'profissional',
+      'shop_name': 'Barbearia',
+      'role': 'barber',
+      'access_status': 'ativo',
+      'activation_note': 'observacao | AGENDA_SELF_BLOCK=1',
+    });
+    final blocked = AuthUserDto.fromJson({
+      'id': 'barber-2',
+      'name': 'Profissional 2',
+      'login': 'profissional-2',
+      'shop_name': 'Barbearia',
+      'role': 'barber',
+      'access_status': 'ativo',
+    });
+
+    expect(allowed.canSelfBlockAgenda, isTrue);
+    expect(blocked.canSelfBlockAgenda, isFalse);
+  });
 }

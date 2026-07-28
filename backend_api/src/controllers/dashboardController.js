@@ -1,13 +1,7 @@
 import { supabase, query } from '../services/supabaseService.js';
 import { isRestrictedBarber } from '../services/accessService.js';
 import { businessNow } from '../services/schedulePolicy.js';
-
-function isInternalPayment(row) {
-  const serviceName = String(row.services?.name || '').toLowerCase();
-  return row.time === '00:00'
-    && /parcela|mensalidade|cobranca|cobrança/.test(serviceName)
-    && /ZB-[A-Z0-9]+/i.test(`${row.client_name || ''} ${serviceName}`);
-}
+import { isInternalPayment } from '../services/servicePolicy.js';
 
 export async function summary(req, res) {
   const month = String(req.query.month || new Date().toISOString().slice(0, 7));
@@ -29,6 +23,14 @@ export async function summary(req, res) {
   const barbers = await query(barberBuilder);
   const ids = barbers.map((barber) => barber.id);
   const appointments = ids.length ? await query(supabase.from('appointments').select('id,barber_id,status,date,time,client_name,client_phone,reminder_date,received_amount,services(name,price,duration),barbers(name)').in('barber_id', ids).gte('date', start).lt('date', endDate).order('date').order('time')) : [];
+  const attentionRows = ids.length ? await query(
+    supabase.from('appointments')
+      .select('id,barber_id,status,date,time,client_name,client_phone,reminder_date,received_amount,services(name,price,duration),barbers(name)')
+      .in('barber_id', ids)
+      .in('status', ['agendado', 'encaixe', 'em_andamento', 'em_carteira'])
+      .order('date')
+      .order('time'),
+  ) : [];
   const completed = appointments.filter((item) => ['concluido', 'finalizado'].includes(item.status));
   const completedVisits = completed.filter((item) => !isInternalPayment(item));
   const revenue = completed.reduce((sum, item) =>
@@ -57,10 +59,11 @@ export async function summary(req, res) {
   const nextAppointment = todayRows.find((item) =>
     ['agendado', 'encaixe', 'em_andamento'].includes(item.status) && item.time >= currentTime,
   ) || null;
-  const pending = appointments.filter((item) =>
+  const pending = attentionRows.filter((item) =>
     ['agendado', 'encaixe', 'em_andamento'].includes(item.status) && item.date < today,
   ).length;
-  const walletRows = appointments.filter((item) => item.status === 'em_carteira');
+  const walletRows = attentionRows.filter((item) =>
+    item.status === 'em_carteira');
   const lastByClient = new Map();
   for (const row of completedVisits) {
     const key = `${String(row.client_phone || '').replace(/\D/g, '')}|${String(row.client_name || '').trim().toLowerCase()}`;

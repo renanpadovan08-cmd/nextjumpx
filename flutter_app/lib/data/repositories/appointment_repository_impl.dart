@@ -14,4 +14,7 @@ class AppointmentRepositoryImpl implements IAppointmentRepository {
   @override
   Future<AppointmentDto> update(String id, Map<String, dynamic> input) =>
       _source.update(id, input);
+  @override
+  Future<Map<String, dynamic>> createSelfClosure(Map<String, dynamic> input) =>
+      _source.createSelfClosure(input);
 }

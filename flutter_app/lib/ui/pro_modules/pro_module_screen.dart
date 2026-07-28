@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_config.dart';
+import '../../core/date_format.dart';
 import '../core/theme/zen_colors.dart';
 import '../core/widgets/zen_card.dart';
 import 'view_models/pro_module_view_model.dart';
@@ -196,7 +197,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                   Expanded(
                       child: _walletText(
                           '${row['client_name'] ?? 'Cobrança'}',
-                          '${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''} • lembrete: ${row['reminder_date'] ?? 'não definido'}',
+                          '${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''} • lembrete: ${row['reminder_date'] == null ? 'não definido' : isoToBrazilianDate('${row['reminder_date']}')}',
                           _money(row['received_amount'] ??
                               row['services']?['price']))),
                   const SizedBox(width: 16),
@@ -602,9 +603,14 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           _miniValue('Lucro', _money(gross - commissions))
         ]),
         const SizedBox(height: 14),
-        Align(
-          alignment: Alignment.centerRight,
-          child: _action('Copiar relatório CSV', _copyReportCsv),
+        Wrap(
+          alignment: WrapAlignment.end,
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            _action('Copiar relatório CSV', _copyReportCsv),
+            _action('Copiar backup JSON', _copyBackupJson, gold: true),
+          ],
         ),
       ]),
     ]);
@@ -626,44 +632,121 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     if (mounted) _message('Relatório CSV copiado.');
   }
 
-  Widget _cash() => _surface('Controle de caixa',
-          'Acompanhe entradas, saídas e o saldo do período.', [
-        Wrap(spacing: 12, runSpacing: 12, children: [
-          _metric('Entradas', _money(_object['entries']), ZenColors.green),
-          _metric('Saídas', _money(_object['commissions']),
-              const Color(0xffed7268)),
-          _metric('Saldo', _money(_object['balance']), ZenColors.sky)
-        ]),
-        const SizedBox(height: 15),
-        ...List<Map<String, dynamic>>.from(
-                (_object['manual'] as List?) ?? const [])
-            .map(_cashEntry),
-        if (((_object['closures'] as List?) ?? const []).isNotEmpty) ...[
-          const SizedBox(height: 18),
-          const Text('Fechamentos realizados',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
-          ...List<Map<String, dynamic>>.from(
-                  (_object['closures'] as List?) ?? const [])
-              .map((closure) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.lock_clock_outlined),
-                    title: Text(
-                        '${closure['period_start']} a ${closure['period_end']}'),
-                    subtitle:
-                        Text('Saldo fechado: ${_money(closure['balance'])}'),
-                  )),
-        ],
-        const SizedBox(height: 12),
-        Wrap(
-          alignment: WrapAlignment.end,
-          spacing: 10,
-          runSpacing: 10,
+  Future<void> _copyBackupJson() async {
+    final backup = await widget.viewModel.createBackupJson();
+    if (backup == null) {
+      if (mounted) _message('Não foi possível gerar o backup.');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: backup));
+    if (mounted) {
+      _message('Backup JSON copiado. Salve o conteúdo em um local seguro.');
+    }
+  }
+
+  Widget _cash() => _surface(
+          'Controle de caixa',
+          'Acompanhe o caixa aberto, altere recebimentos com auditoria e faça o fechamento.',
+          [
+            Wrap(spacing: 12, runSpacing: 12, children: [
+              _metric('Entradas', _money(_object['entries']), ZenColors.green),
+              _metric('Saídas', _money(_object['commissions']),
+                  const Color(0xffed7268)),
+              _metric('Saldo', _money(_object['balance']), ZenColors.sky),
+              _metric(
+                'Alterações',
+                '${((_object['adjustments'] as List?) ?? const []).length}',
+                ZenColors.gold,
+              ),
+            ]),
+            const SizedBox(height: 15),
+            if (((_object['receipts'] as List?) ?? const []).isNotEmpty) ...[
+              const Text(
+                'Recebimentos em aberto',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              ),
+              ...List<Map<String, dynamic>>.from(
+                (_object['receipts'] as List?) ?? const [],
+              ).map(_cashReceipt),
+              const SizedBox(height: 18),
+            ],
+            if (((_object['manual'] as List?) ?? const []).isNotEmpty)
+              const Text(
+                'Lançamentos em aberto',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              ),
+            ...List<Map<String, dynamic>>.from(
+                    (_object['manual'] as List?) ?? const [])
+                .map(_cashEntry),
+            if (((_object['adjustments'] as List?) ?? const []).isNotEmpty) ...[
+              const SizedBox(height: 18),
+              const Text(
+                'Alterações de recebimento',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+              ),
+              ...List<Map<String, dynamic>>.from(
+                (_object['adjustments'] as List?) ?? const [],
+              ).map(
+                (entry) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.edit_note, color: ZenColors.gold),
+                  title: Text(
+                    '${entry['client_name'] ?? 'Recebimento'} · ${_money(entry['old_amount'])} → ${_money(entry['new_amount'])}',
+                  ),
+                  subtitle: Text('${entry['reason'] ?? ''}'),
+                ),
+              ),
+            ],
+            if (((_object['closures'] as List?) ?? const []).isNotEmpty) ...[
+              const SizedBox(height: 18),
+              const Text('Fechamentos realizados',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+              ...List<Map<String, dynamic>>.from(
+                      (_object['closures'] as List?) ?? const [])
+                  .map((closure) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: const Icon(Icons.lock_clock_outlined),
+                        title: Text(
+                            '${isoToBrazilianDate('${closure['period_start']}')} a ${isoToBrazilianDate('${closure['period_end']}')}'),
+                        subtitle: Text(
+                            'Saldo fechado: ${_money(closure['balance'])}'),
+                      )),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _action('Fechar caixa', _closeCash),
+                _action('Adicionar lançamento', _createCashDialog, green: true),
+              ],
+            ),
+          ]);
+
+  Widget _cashReceipt(Map<String, dynamic> receipt) => Container(
+        margin: const EdgeInsets.only(top: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: _inset(),
+        child: Row(
           children: [
-            _action('Fechar mês', _closeCash),
-            _action('Adicionar lançamento', _createCashDialog, green: true),
+            Expanded(
+              child: _walletText(
+                '${receipt['client_name'] ?? 'Cliente'}',
+                '${isoToBrazilianDate('${receipt['date']}')} ${receipt['time'] ?? ''} · ${receipt['services']?['name'] ?? 'Serviço'} · ${receipt['barbers']?['name'] ?? ''}',
+                _money(
+                  receipt['received_amount'] ?? receipt['services']?['price'],
+                ),
+              ),
+            ),
+            _action(
+              'Alterar recebimento',
+              () => _editCashReceipt(receipt),
+              gold: true,
+            ),
           ],
         ),
-      ]);
+      );
 
   Widget _cashEntry(Map<String, dynamic> entry) => Container(
         margin: const EdgeInsets.only(top: 10),
@@ -678,11 +761,12 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                 _money(entry['amount']),
               ),
             ),
-            IconButton(
-              onPressed: () => _deleteCashEntry('${entry['id']}'),
-              icon: const Icon(Icons.delete_outline, color: ZenColors.red),
-              tooltip: 'Cancelar lançamento',
-            ),
+            if (entry['source'] == 'manual')
+              IconButton(
+                onPressed: () => _deleteCashEntry('${entry['id']}'),
+                icon: const Icon(Icons.delete_outline, color: ZenColors.red),
+                tooltip: 'Cancelar lançamento',
+              ),
           ],
         ),
       );
@@ -719,9 +803,9 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Fechar caixa de $month?'),
+        title: const Text('Fechar o caixa aberto?'),
         content: const Text(
-            'Será criado um registro com entradas, saídas e saldo atual do período.'),
+            'Os recebimentos e lançamentos abertos serão arquivados. Um relatório CSV será copiado para a área de transferência.'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -735,14 +819,83 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     if (confirmed != true) return;
     final ok = await widget.viewModel.createCashClosure(month);
     if (mounted) {
-      _message(
-          ok ? 'Fechamento registrado.' : 'Não foi possível fechar o caixa.');
+      if (ok && widget.viewModel.lastCashCsv.isNotEmpty) {
+        await Clipboard.setData(
+          ClipboardData(text: widget.viewModel.lastCashCsv),
+        );
+      }
+      _message(ok
+          ? 'Caixa fechado. Relatório CSV copiado.'
+          : 'Não foi possível fechar o caixa.');
+    }
+  }
+
+  Future<void> _editCashReceipt(Map<String, dynamic> receipt) async {
+    final original = (receipt['received_amount'] as num?) ??
+        (receipt['services']?['price'] as num?) ??
+        0;
+    final amount = TextEditingController(
+      text: original.toStringAsFixed(2).replaceAll('.', ','),
+    );
+    final reason = TextEditingController();
+    final data = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Alterar recebimento'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: amount,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(labelText: 'Novo valor'),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: reason,
+              maxLines: 2,
+              decoration:
+                  const InputDecoration(labelText: 'Motivo obrigatório'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, {
+              'amount': double.tryParse(
+                    amount.text.replaceAll('R\$', '').replaceAll(',', '.'),
+                  ) ??
+                  -1,
+              'reason': reason.text.trim(),
+            }),
+            child: const Text('Salvar alteração'),
+          ),
+        ],
+      ),
+    );
+    amount.dispose();
+    reason.dispose();
+    if (data == null) return;
+    final ok = await widget.viewModel.updateCashReceipt(
+      '${receipt['id']}',
+      data,
+    );
+    if (mounted) {
+      _message(ok
+          ? 'Recebimento alterado e registrado na auditoria.'
+          : 'Não foi possível alterar o recebimento.');
     }
   }
 
   Future<void> _createCashDialog() async {
     final description = TextEditingController();
     final amount = TextEditingController();
+    final reason = TextEditingController();
     var type = 'entrada';
     final data = await showDialog<Map<String, String>>(
         context: context,
@@ -773,7 +926,12 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                               onChanged: (value) =>
                                   setDialog(() => type = value ?? type),
                               decoration:
-                                  const InputDecoration(labelText: 'Tipo'))
+                                  const InputDecoration(labelText: 'Tipo')),
+                          const SizedBox(height: 10),
+                          TextField(
+                              controller: reason,
+                              decoration: const InputDecoration(
+                                  labelText: 'Observação opcional'))
                         ])),
                 actions: [
                   TextButton(
@@ -783,17 +941,20 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                       onPressed: () => Navigator.pop(context, {
                             'description': description.text.trim(),
                             'amount': amount.text.trim(),
-                            'type': type
+                            'type': type,
+                            'reason': reason.text.trim(),
                           }),
                       child: const Text('Salvar'))
                 ]));
     description.dispose();
     amount.dispose();
+    reason.dispose();
     if (data == null || data['description']!.isEmpty) return;
     final ok = await widget.viewModel.createCashEntry({
       'description': data['description'],
       'amount': double.tryParse(data['amount'] ?? '') ?? 0,
-      'type': data['type']
+      'type': data['type'],
+      'reason': data['reason'],
     });
     if (mounted) {
       _message(ok
@@ -812,6 +973,12 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           [
             _currentField('name', 'Responsável', '${_object['name'] ?? ''}'),
             _currentField('phone', 'WhatsApp', '${_object['phone'] ?? ''}'),
+            if (widget.currentUserCanManage)
+              _currentField(
+                'shopName',
+                'Nome da barbearia',
+                '${_object['shop_name'] ?? ''}',
+              ),
             _profileImageField(
               'photoUrl',
               widget.currentUserCanManage
@@ -901,6 +1068,55 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           child:
               _action('Salvar funcionamento', _saveWeeklySchedule, green: true),
         ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Horários especiais',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Feche feriados, férias ou períodos específicos sem apagar os atendimentos existentes.',
+                    style: TextStyle(color: ZenColors.muted),
+                  ),
+                ],
+              ),
+            ),
+            _action('Fechar período', _createHoursClosure, gold: true),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (((_object['closures'] as List?) ?? const []).isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Text(
+              'Nenhum fechamento futuro.',
+              style: TextStyle(color: ZenColors.muted),
+            ),
+          )
+        else
+          ...List<Map<String, dynamic>>.from(
+            (_object['closures'] as List?) ?? const [],
+          ).map(
+            (closure) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.event_busy, color: ZenColors.gold),
+              title: Text(
+                '${isoToBrazilianDate('${closure['date']}')} · ${closure['barbers']?['name'] ?? ''}',
+              ),
+              subtitle: Text('${closure['client_name'] ?? 'Agenda fechada'}'),
+              trailing: IconButton(
+                onPressed: () => _deleteHoursClosure('${closure['id']}'),
+                icon: const Icon(Icons.lock_open_outlined),
+                tooltip: 'Reabrir agenda',
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -957,6 +1173,145 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
       _message(ok
           ? 'Funcionamento semanal salvo.'
           : 'Não foi possível salvar o funcionamento.');
+    }
+  }
+
+  Future<void> _createHoursClosure() async {
+    var startDate = DateTime.now();
+    var endDate = startDate;
+    var barberId = '';
+    final reason = TextEditingController(text: 'Feriado / agenda fechada');
+    final barbers = List<Map<String, dynamic>>.from(
+      (_object['barbers'] as List?) ?? const [],
+    );
+    final data = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Fechar agenda por período'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: barberId,
+                  items: [
+                    const DropdownMenuItem(
+                      value: '',
+                      child: Text('Todos os profissionais'),
+                    ),
+                    ...barbers.map(
+                      (barber) => DropdownMenuItem(
+                        value: '${barber['id']}',
+                        child: Text('${barber['name']}'),
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      setDialogState(() => barberId = value ?? ''),
+                  decoration: const InputDecoration(labelText: 'Profissional'),
+                ),
+                const SizedBox(height: 10),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Data inicial'),
+                  subtitle: Text(brazilianDate(startDate)),
+                  trailing: const Icon(Icons.calendar_month),
+                  onTap: () async {
+                    final selected = await showDatePicker(
+                      context: context,
+                      initialDate: startDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 3650)),
+                      locale: const Locale('pt', 'BR'),
+                    );
+                    if (selected != null) {
+                      setDialogState(() {
+                        startDate = selected;
+                        if (endDate.isBefore(startDate)) endDate = startDate;
+                      });
+                    }
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Data final'),
+                  subtitle: Text(brazilianDate(endDate)),
+                  trailing: const Icon(Icons.calendar_month),
+                  onTap: () async {
+                    final selected = await showDatePicker(
+                      context: context,
+                      initialDate: endDate,
+                      firstDate: startDate,
+                      lastDate: startDate.add(const Duration(days: 365)),
+                      locale: const Locale('pt', 'BR'),
+                    );
+                    if (selected != null) {
+                      setDialogState(() => endDate = selected);
+                    }
+                  },
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: reason,
+                  decoration: const InputDecoration(labelText: 'Motivo'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, {
+                'startDate': isoDate(startDate),
+                'endDate': isoDate(endDate),
+                if (barberId.isNotEmpty) 'barberId': barberId,
+                'reason': reason.text.trim(),
+              }),
+              child: const Text('Fechar agenda'),
+            ),
+          ],
+        ),
+      ),
+    );
+    reason.dispose();
+    if (data == null) return;
+    final ok = await widget.viewModel.createHoursClosure(data);
+    if (mounted) {
+      _message(ok
+          ? 'Período fechado na agenda.'
+          : 'Não foi possível fechar o período.');
+    }
+  }
+
+  Future<void> _deleteHoursClosure(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reabrir esta agenda?'),
+        content: const Text(
+          'O bloqueio especial será cancelado e novos horários voltarão a ficar disponíveis.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Voltar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Reabrir'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final ok = await widget.viewModel.deleteHoursClosure(id);
+    if (mounted) {
+      _message(
+          ok ? 'Agenda reaberta.' : 'Não foi possível reabrir esta agenda.');
     }
   }
 

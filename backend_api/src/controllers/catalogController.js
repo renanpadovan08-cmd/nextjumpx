@@ -4,6 +4,7 @@ import {
   isRestrictedBarber,
   sameShop,
 } from '../services/accessService.js';
+import { isInternalService } from '../services/servicePolicy.js';
 import { HttpError } from '../utils/httpError.js';
 
 async function ensureServiceAccess(user, serviceId) {
@@ -34,7 +35,8 @@ export async function listServices(req, res) {
     }
     builder.in('barber_id', barbers.map((barber) => barber.id));
   }
-  res.json(await query(builder));
+  res.json((await query(builder))
+    .filter((service) => !isInternalService(service)));
 }
 
 export async function createService(req, res) {

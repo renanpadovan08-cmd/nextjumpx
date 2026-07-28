@@ -1,5 +1,6 @@
 import { supabase, query, one } from '../services/supabaseService.js';
 import { intervalsOverlap, validateSlot } from '../services/schedulePolicy.js';
+import { isInternalService } from '../services/servicePolicy.js';
 import { HttpError } from '../utils/httpError.js';
 
 const statuses = ['agendado', 'em_carteira', 'encaixe', 'em_andamento', 'bloqueio'];
@@ -14,14 +15,7 @@ function publicBarber(row) {
 }
 
 function publicServices(rows) {
-  return rows.filter((service) => {
-    const name = String(service.name || '').toLowerCase();
-    const internalName = ['assinatura', 'parcela', 'mensalidade', 'bloqueio', 'carteira', 'cobranca', 'cobrança']
-      .some((marker) => name.includes(marker));
-    const technicalBlock = Number(service.price || 0) === 0 && Number(service.duration || 0) >= 240;
-    const contractCode = /ZB-[A-Z0-9]{4,}/i.test(String(service.name || ''));
-    return !internalName && !technicalBlock && !contractCode;
-  });
+  return rows.filter((service) => !isInternalService(service));
 }
 
 async function activeBarber(id) {

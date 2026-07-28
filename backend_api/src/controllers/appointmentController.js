@@ -5,10 +5,11 @@ import {
   isRestrictedBarber,
 } from '../services/accessService.js';
 import { intervalsOverlap, validateSlot } from '../services/schedulePolicy.js';
+import { normalizeAppointmentPatch } from '../services/appointmentPatch.js';
 import { HttpError } from '../utils/httpError.js';
 
 const activeStatuses = ['agendado', 'em_carteira', 'encaixe', 'em_andamento', 'bloqueio'];
-const validStatuses = [...activeStatuses, 'concluido', 'finalizado', 'faltou', 'cancelado'];
+const validStatuses = [...activeStatuses, 'concluido', 'finalizado', 'bonificado', 'faltou', 'cancelado'];
 
 async function ensureBarberAccess(user, barberId) {
   const barber = await one(supabase.from('barbers').select('id,shop_name,shop_id').eq('id', barberId), 'Barbeiro nao encontrado');
@@ -71,25 +72,6 @@ export async function availability(req, res) {
   res.json(appointments);
 }
 
-const normalizeAppointmentKey = (key) => {
-  switch (key) {
-    case 'barberId':
-      return 'barber_id';
-    case 'serviceId':
-      return 'service_id';
-    case 'clientName':
-      return 'client_name';
-    case 'clientPhone':
-      return 'client_phone';
-    case 'reminderDays':
-      return 'reminder_days';
-    case 'reminderDate':
-      return 'reminder_date';
-    default:
-      return key;
-  }
-};
-
 export async function createAppointment(req, res) {
   const {
     barberId,
@@ -104,7 +86,7 @@ export async function createAppointment(req, res) {
   } = req.body;
   if (![barberId, serviceId, clientName, date, time].every(Boolean)) throw new HttpError(400, 'Dados incompletos para o agendamento');
   if (!validStatuses.includes(status)) throw new HttpError(400, 'Status de agendamento invalido');
-  await ensureBarberAccess(req.user, barberId);
+  const barber = await ensureBarberAccess(req.user, barberId);
   await assertNoConflict({ barberId, serviceId, date, time, allowFitIn: status === 'encaixe' });
   res.status(201).json(await query(supabase.from('appointments').insert({
     barber_id: barberId,
@@ -126,12 +108,7 @@ export async function updateAppointment(req, res) {
   if (isRestrictedBarber(req.user) && current.barber_id !== req.user.id) {
     throw new HttpError(403, 'Voce so pode operar sua propria agenda');
   }
-  const allowed = ['barber_id', 'service_id', 'client_name', 'client_phone', 'date', 'time', 'status', 'reminder_days', 'reminder_date', 'cancel_note', 'barberId', 'serviceId', 'clientName', 'clientPhone'];
-  const patch = Object.fromEntries(
-    Object.entries(req.body)
-      .filter(([key]) => allowed.includes(key))
-      .map(([key, value]) => [normalizeAppointmentKey(key), value]),
-  );
+  const patch = normalizeAppointmentPatch(req.body);
   if (patch.status && !validStatuses.includes(patch.status)) throw new HttpError(400, 'Status de agendamento invalido');
   if (patch.barber_id) await ensureBarberAccess(req.user, patch.barber_id);
   if (patch.barber_id || patch.date || patch.time || patch.service_id) {
