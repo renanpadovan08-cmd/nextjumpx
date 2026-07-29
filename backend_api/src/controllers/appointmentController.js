@@ -101,7 +101,7 @@ export async function createAppointment(req, res) {
   } = req.body;
   if (![barberId, serviceId, clientName, date, time].every(Boolean)) throw new HttpError(400, 'Dados incompletos para o agendamento');
   if (!validStatuses.includes(status)) throw new HttpError(400, 'Status de agendamento invalido');
-  await ensureBarberAccess(req, barberId);
+  const barber = await ensureBarberAccess(req, barberId);
   await assertNoConflict({ barberId, serviceId, date, time, allowFitIn: status === 'encaixe' });
   res.status(201).json(await query(supabase.from('appointments').insert({
     barber_id: barberId,
