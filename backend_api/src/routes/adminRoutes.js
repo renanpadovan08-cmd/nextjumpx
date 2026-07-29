@@ -13,5 +13,6 @@ router.post('/admin/barbers/:id/password-reset', asyncHandler(controller.resetPa
 router.post('/admin/barbers', asyncHandler(controller.createAccount));
 router.put('/admin/barbers/:id/settings', asyncHandler(controller.updateSettings));
 router.post('/admin/barbers/:id/payment', asyncHandler(controller.markPaid));
+router.put('/admin/barbers/:id/cash-password', asyncHandler(controller.setCashPassword));
 router.delete('/admin/barbers/:id', asyncHandler(controller.deleteAccount));
 export default router;

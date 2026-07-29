@@ -15,5 +15,14 @@ class CatalogRemoteDataSource {
   Future<ServiceDto> update(String id, Map<String, dynamic> input) async =>
       ServiceDto.fromJson(
           await _api.patch('/services/$id', input) as Map<String, dynamic>);
+  Future<String> uploadImage(String id, Map<String, dynamic> input) async {
+    final result = await _api.post('/uploads/images', {
+      ...input,
+      'kind': 'service',
+      'serviceId': id,
+    }) as Map<String, dynamic>;
+    return '${result['url'] ?? ''}';
+  }
+
   Future<void> delete(String id) => _api.delete('/services/$id');
 }

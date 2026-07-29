@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { supabase, one, query } from '../services/supabaseService.js';
 import { HttpError } from '../utils/httpError.js';
+import { makeCashPasswordHash } from '../services/cashPasswordPolicy.js';
 
 const barberColumns = 'id,name,login,phone,shop_name,shop_id,role,access_status,expires_at,activation_note,created_at';
 const settingFields = ['monthly_fee', 'due_day', 'subscription_status', 'payment_method', 'plan_started_at', 'plan_ends_at', 'last_payment_at', 'bonus_note', 'internal_note', 'multiunit_enabled'];
@@ -19,16 +20,34 @@ async function settingsMap() {
   return new Map((data || []).map((item) => [item.barber_id, item]));
 }
 
+async function cashSettingsMap() {
+  const { data, error } = await supabase.from('cash_access_settings')
+    .select('shop_id,shop_name,password_hash');
+  if (error?.code === '42P01') return new Map();
+  if (error) throw new HttpError(400, error.message);
+  return new Map((data || []).map((item) => [
+    item.shop_id || `shop:${String(item.shop_name || '').trim().toLowerCase()}`,
+    Boolean(item.password_hash),
+  ]));
+}
+
 function pick(source, fields) {
   return Object.fromEntries(Object.entries(source || {}).filter(([key]) => fields.includes(key)));
 }
 
 export async function listShops(_req, res) {
-  const [barbers, settings] = await Promise.all([
+  const [barbers, settings, cashSettings] = await Promise.all([
     query(supabase.from('barbers').select(barberColumns).order('created_at', { ascending: false })),
     settingsMap(),
+    cashSettingsMap(),
   ]);
-  res.json(barbers.map((barber) => flattenAccount(barber, settings)));
+  res.json(barbers.map((barber) => ({
+    ...flattenAccount(barber, settings),
+    cashPasswordConfigured: cashSettings.get(
+      barber.shop_id
+        || `shop:${String(barber.shop_name || '').trim().toLowerCase()}`,
+    ) === true,
+  })));
 }
 
 export async function updateAccess(req, res) {
@@ -82,6 +101,42 @@ export async function updateSettings(req, res) {
 export async function markPaid(req, res) {
   const { date } = req.body;
   await query(supabase.from('admin_account_settings').upsert({ barber_id: req.params.id, last_payment_at: date || new Date().toISOString().slice(0, 10), subscription_status: 'ativo' }));
+  res.status(204).end();
+}
+
+export async function setCashPassword(req, res) {
+  const password = String(req.body.password || '').trim();
+  if (password.length < 4) {
+    throw new HttpError(400, 'A senha do caixa precisa ter ao menos 4 caracteres');
+  }
+  const account = await one(
+    supabase.from('barbers').select('id,name,shop_id,shop_name')
+      .eq('id', req.params.id),
+    'Barbearia nao encontrada',
+  );
+  const row = {
+    shop_id: account.shop_id || null,
+    shop_name: account.shop_name || account.name || '',
+    owner_barber_id: account.id,
+    password_hash: makeCashPasswordHash({
+      shopId: account.shop_id,
+      shopName: account.shop_name || account.name,
+    }, password),
+    updated_by: req.user.name || req.user.login || 'Admin',
+    updated_at: new Date().toISOString(),
+  };
+  let builder = supabase.from('cash_access_settings').select('id').limit(1);
+  builder = account.shop_id
+    ? builder.eq('shop_id', account.shop_id)
+    : builder.eq('shop_name', row.shop_name);
+  const { data, error } = await builder;
+  if (error) throw new HttpError(400, error.message);
+  if (data?.[0]?.id) {
+    await query(supabase.from('cash_access_settings')
+      .update(row).eq('id', data[0].id));
+  } else {
+    await query(supabase.from('cash_access_settings').insert(row));
+  }
   res.status(204).end();
 }
 

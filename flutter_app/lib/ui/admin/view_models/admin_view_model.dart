@@ -55,6 +55,18 @@ class AdminViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> setCashPassword(String id, String password) async {
+    try {
+      await _repository.setCashPassword(id, password);
+      await load();
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<bool> createAccount(Map<String, dynamic> value) async {
     try {
       final created = await _repository.createAccount(value);

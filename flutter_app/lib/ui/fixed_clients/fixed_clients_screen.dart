@@ -114,10 +114,24 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
                       padding: const EdgeInsets.all(12),
                       child: Align(
                         alignment: Alignment.centerRight,
-                        child: OutlinedButton.icon(
-                          onPressed: () => _cancel('${contract['code']}'),
-                          icon: const Icon(Icons.cancel_outlined),
-                          label: const Text('Cancelar pacote'),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            if (contract['editable'] == true)
+                              FilledButton.tonalIcon(
+                                onPressed: () => _edit(
+                                  Map<String, dynamic>.from(contract as Map),
+                                ),
+                                icon: const Icon(Icons.edit_outlined),
+                                label: const Text('Editar pacote'),
+                              ),
+                            OutlinedButton.icon(
+                              onPressed: () => _cancel('${contract['code']}'),
+                              icon: const Icon(Icons.cancel_outlined),
+                              label: const Text('Cancelar pacote'),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -358,6 +372,199 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Assinatura criada.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
+  }
+
+  Future<void> _edit(Map<String, dynamic> contract) async {
+    final name = TextEditingController(text: '${contract['clientName'] ?? ''}');
+    final phone =
+        TextEditingController(text: '${contract['clientPhone'] ?? ''}');
+    final package =
+        TextEditingController(text: '${contract['packageName'] ?? ''}');
+    final value = TextEditingController(
+      text: '${(contract['paymentValue'] as num?) ?? 0}',
+    );
+    final duration = TextEditingController(
+      text: '${(contract['duration'] as num?) ?? 30}',
+    );
+    final time = TextEditingController(text: '${contract['time'] ?? '09:00'}');
+    var selectedDate =
+        parseIsoDate('${contract['startDate'] ?? ''}') ?? DateTime.now();
+    if (selectedDate.isBefore(DateTime.now())) selectedDate = DateTime.now();
+    final date = TextEditingController(text: brazilianDate(selectedDate));
+    var selectedBillingDate =
+        parseIsoDate('${contract['firstBillingDate'] ?? ''}') ?? selectedDate;
+    if (selectedBillingDate.isBefore(DateTime.now())) {
+      selectedBillingDate = selectedDate;
+    }
+    final billingDate =
+        TextEditingController(text: brazilianDate(selectedBillingDate));
+    var barberId = '${contract['barberId'] ?? ''}';
+    if (!widget.barbers.items.any((barber) => barber.id == barberId)) {
+      barberId =
+          widget.barbers.items.isEmpty ? '' : widget.barbers.items.first.id;
+    }
+
+    final data = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Editar cliente fixo'),
+        content: StatefulBuilder(
+          builder: (context, setDialogState) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'As alterações serão aplicadas somente aos horários e cobranças futuras.',
+                  style: TextStyle(color: ZenColors.muted),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'Cliente'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: phone,
+                  decoration: const InputDecoration(labelText: 'WhatsApp'),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: barberId.isEmpty ? null : barberId,
+                  items: widget.barbers.items
+                      .map((barber) => DropdownMenuItem(
+                            value: barber.id,
+                            child: Text(barber.name),
+                          ))
+                      .toList(),
+                  onChanged: (newValue) => barberId = newValue ?? barberId,
+                  decoration: const InputDecoration(labelText: 'Profissional'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: package,
+                  decoration:
+                      const InputDecoration(labelText: 'Nome do pacote'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: value,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration:
+                      const InputDecoration(labelText: 'Valor por cobrança'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: duration,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                      labelText: 'Duração do atendimento'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: date,
+                  readOnly: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Próximo atendimento (DD/MM/AAAA)',
+                    suffixIcon: Icon(Icons.calendar_month),
+                  ),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 3650)),
+                      locale: const Locale('pt', 'BR'),
+                    );
+                    if (picked != null) {
+                      setDialogState(() {
+                        selectedDate = picked;
+                        date.text = brazilianDate(picked);
+                      });
+                    }
+                  },
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: time,
+                  decoration:
+                      const InputDecoration(labelText: 'Horário (HH:MM)'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: billingDate,
+                  readOnly: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Próxima cobrança (DD/MM/AAAA)',
+                    suffixIcon: Icon(Icons.calendar_month),
+                  ),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: selectedBillingDate,
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime.now().add(const Duration(days: 3650)),
+                      locale: const Locale('pt', 'BR'),
+                    );
+                    if (picked != null) {
+                      setDialogState(() {
+                        selectedBillingDate = picked;
+                        billingDate.text = brazilianDate(picked);
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, {
+              'barberId': barberId,
+              'clientName': name.text.trim(),
+              'clientPhone': phone.text.trim(),
+              'packageName': package.text.trim(),
+              'paymentValue': double.tryParse(
+                    value.text.replaceAll(',', '.'),
+                  ) ??
+                  0,
+              'duration': int.tryParse(duration.text) ?? 30,
+              'startDate': isoDate(selectedDate),
+              'firstBillingDate': isoDate(selectedBillingDate),
+              'time': time.text.trim(),
+            }),
+            child: const Text('Salvar alterações'),
+          ),
+        ],
+      ),
+    );
+    name.dispose();
+    phone.dispose();
+    package.dispose();
+    value.dispose();
+    duration.dispose();
+    time.dispose();
+    date.dispose();
+    billingDate.dispose();
+    if (data == null || '${data['clientName']}'.trim().isEmpty) return;
+    try {
+      await widget.viewModel.update('${contract['code']}', data);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cliente fixo atualizado.')),
         );
       }
     } catch (error) {

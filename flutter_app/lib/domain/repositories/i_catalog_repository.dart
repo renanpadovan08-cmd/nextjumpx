@@ -4,5 +4,6 @@ abstract interface class ICatalogRepository {
   Future<List<ServiceDto>> list([String? barberId]);
   Future<ServiceDto> create(Map<String, dynamic> input);
   Future<ServiceDto> update(String id, Map<String, dynamic> input);
+  Future<String> uploadImage(String id, Map<String, dynamic> input);
   Future<void> delete(String id);
 }

@@ -88,6 +88,7 @@ create table if not exists public.cash_movements (
   id uuid primary key default gen_random_uuid(),
   shop_id uuid,
   shop_name text not null,
+  unit_id uuid,
   type text not null check (type in ('entrada','saida','ajuste')),
   source text not null default 'manual',
   appointment_id uuid,
@@ -110,6 +111,7 @@ create table if not exists public.cash_closures (
   id uuid primary key default gen_random_uuid(),
   shop_id uuid,
   shop_name text not null,
+  unit_id uuid,
   period_start date,
   period_end date,
   total_in numeric(12,2) not null default 0,
@@ -120,6 +122,11 @@ create table if not exists public.cash_closures (
   file_name text,
   created_at timestamptz not null default now()
 );
+
+alter table public.cash_movements
+  add column if not exists unit_id uuid;
+alter table public.cash_closures
+  add column if not exists unit_id uuid;
 
 with owners as (
   select distinct on (shop_name) shop_name, shop_id
@@ -221,10 +228,40 @@ create index if not exists idx_retention_shop_client
   on public.client_retention_actions (shop_id, client_key, created_at desc);
 create index if not exists idx_unit_requests_manager
   on public.unit_requests (manager_id, created_at desc);
+
+create table if not exists public.units (
+  id uuid primary key default gen_random_uuid(),
+  request_id uuid unique,
+  shop_id uuid,
+  shop_name text not null,
+  name text not null,
+  city text,
+  state text,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.barber_unit_assignments (
+  barber_id uuid primary key,
+  unit_id uuid not null,
+  shop_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_units_shop
+  on public.units(shop_id, active, created_at);
+create index if not exists idx_barber_unit_assignments_unit
+  on public.barber_unit_assignments(unit_id, barber_id);
 create index if not exists idx_cash_movements_shop_created
   on public.cash_movements (shop_id, created_at desc);
+create index if not exists idx_cash_movements_unit_created
+  on public.cash_movements (unit_id, created_at desc);
 create index if not exists idx_cash_closures_shop_period
   on public.cash_closures (shop_id, period_start desc);
+create index if not exists idx_cash_closures_unit_period
+  on public.cash_closures (unit_id, period_start desc);
 
 commit;
 

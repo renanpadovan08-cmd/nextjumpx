@@ -1,7 +1,12 @@
-import { supabase, query } from '../services/supabaseService.js';
+import {
+  supabase,
+  query,
+  queryAll,
+} from '../services/supabaseService.js';
 import { isRestrictedBarber } from '../services/accessService.js';
 import { businessNow } from '../services/schedulePolicy.js';
 import { isInternalPayment } from '../services/servicePolicy.js';
+import { filterBarbersBySelectedUnit } from '../services/unitScopeService.js';
 
 export async function summary(req, res) {
   const month = String(req.query.month || new Date().toISOString().slice(0, 7));
@@ -20,10 +25,13 @@ export async function summary(req, res) {
   if (isRestrictedBarber(req.user)) {
     barberBuilder = barberBuilder.eq('id', req.user.id);
   }
-  const barbers = await query(barberBuilder);
+  const barbers = await filterBarbersBySelectedUnit(
+    req,
+    await query(barberBuilder),
+  );
   const ids = barbers.map((barber) => barber.id);
-  const appointments = ids.length ? await query(supabase.from('appointments').select('id,barber_id,status,date,time,client_name,client_phone,reminder_date,received_amount,services(name,price,duration),barbers(name)').in('barber_id', ids).gte('date', start).lt('date', endDate).order('date').order('time')) : [];
-  const attentionRows = ids.length ? await query(
+  const appointments = ids.length ? await queryAll(supabase.from('appointments').select('id,barber_id,status,date,time,client_name,client_phone,reminder_date,received_amount,services(name,price,duration),barbers(name)').in('barber_id', ids).gte('date', start).lt('date', endDate).order('date').order('time')) : [];
+  const attentionRows = ids.length ? await queryAll(
     supabase.from('appointments')
       .select('id,barber_id,status,date,time,client_name,client_phone,reminder_date,received_amount,services(name,price,duration),barbers(name)')
       .in('barber_id', ids)

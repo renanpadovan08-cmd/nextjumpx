@@ -20,6 +20,13 @@ class AdminRemoteDataSource {
         '/admin/barbers/$barberId/password-reset', {'password': password});
   }
 
+  Future<void> setCashPassword(String barberId, String password) async {
+    await _api.put(
+      '/admin/barbers/$barberId/cash-password',
+      {'password': password},
+    );
+  }
+
   Future<Map<String, dynamic>> createAccount(
           Map<String, dynamic> value) async =>
       Map<String, dynamic>.from(

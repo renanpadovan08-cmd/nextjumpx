@@ -12,6 +12,9 @@ class FeatureRepositoryImpl implements IFeatureRepository {
   Future<void> createFixedClient(Map<String, dynamic> body) =>
       _source.createFixedClient(body);
   @override
+  Future<void> updateFixedClient(String code, Map<String, dynamic> body) =>
+      _source.updateFixedClient(code, body);
+  @override
   Future<void> cancelFixedClient(String code) =>
       _source.cancelFixedClient(code);
   @override

@@ -45,6 +45,66 @@ class _OperationsScreenState extends State<OperationsScreen> {
         ZenCard(child: Text(widget.viewModel.error!))
     ];
     if (tab == 0) {
+      final performance = data?['performance'] as Map? ?? const {};
+      items.add(Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            ZenMetricCard(
+              icon: Icons.payments_outlined,
+              label: 'Faturamento no mês',
+              value:
+                  'R\$ ${((performance['revenue'] as num?) ?? 0).toStringAsFixed(2)}',
+            ),
+            ZenMetricCard(
+              icon: Icons.receipt_long_outlined,
+              label: 'Ticket médio',
+              value:
+                  'R\$ ${((performance['averageTicket'] as num?) ?? 0).toStringAsFixed(2)}',
+              color: ZenColors.sky,
+            ),
+            ZenMetricCard(
+              icon: Icons.groups_outlined,
+              label: 'Clientes atendidos',
+              value: '${performance['uniqueClients'] ?? 0}',
+              color: ZenColors.jade,
+            ),
+            ZenMetricCard(
+              icon: Icons.speed_outlined,
+              label: 'Índice Barbeiro PRO',
+              value: '${performance['proIndex'] ?? 0}/100',
+              color: ZenColors.gold,
+            ),
+            ZenMetricCard(
+              icon: Icons.event_available_outlined,
+              label: 'Ocupação',
+              value: '${performance['occupancy'] ?? 0}%',
+              color: ZenColors.sky,
+            ),
+            ZenMetricCard(
+              icon: Icons.replay_outlined,
+              label: 'Retorno de clientes',
+              value: '${performance['retention'] ?? 0}%',
+              color: ZenColors.jade,
+            ),
+            ZenMetricCard(
+              icon: Icons.person_off_outlined,
+              label: 'Comparecimento',
+              value: '${performance['attendance'] ?? 0}%',
+              color: ZenColors.gold,
+            ),
+            ZenMetricCard(
+              icon: Icons.trending_down_outlined,
+              label: 'Oportunidade semanal',
+              value:
+                  'R\$ ${((performance['missedOpportunity'] as num?) ?? 0).toStringAsFixed(2)}',
+              color: ZenColors.red,
+            ),
+          ],
+        ),
+      ));
       for (final barber in (data?['barbers'] as List? ?? const [])) {
         final goal = _goalFor('${barber['id']}');
         items.add(Padding(

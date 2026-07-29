@@ -21,6 +21,19 @@ export async function uploadImage(req, res) {
       throw new HttpError(403, 'Sem permissao para alterar a foto deste profissional');
     }
     input = { ...req.body, subjectId: barber.id };
+  } else if (req.body?.kind === 'service') {
+    const serviceId = String(req.body.serviceId || '');
+    const service = await one(
+      supabase.from('services')
+        .select('id,barber_id,barbers!inner(id,shop_id,shop_name)')
+        .eq('id', serviceId),
+      'Servico nao encontrado',
+    );
+    assertShopAccess(req.user, service.barbers);
+    if (isRestrictedBarber(req.user) && service.barber_id !== req.user.id) {
+      throw new HttpError(403, 'Sem permissao para alterar a foto deste servico');
+    }
+    input = { ...req.body, subjectId: service.id };
   }
   res.status(201).json(await uploadPublicImage(req.user, input));
 }

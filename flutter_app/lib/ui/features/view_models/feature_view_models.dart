@@ -31,6 +31,11 @@ class FixedClientsViewModel extends ChangeNotifier {
     await load();
   }
 
+  Future<void> update(String code, Map<String, dynamic> value) async {
+    await _load.r.updateFixedClient(code, value);
+    await load();
+  }
+
   Future<void> cancel(String code) async {
     await _load.r.cancelFixedClient(code);
     await load();

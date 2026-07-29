@@ -199,6 +199,14 @@ class _AdminScreenState extends State<AdminScreen> {
                 const Color(0xfff0bd45)),
           if (settings['multiunit_enabled'] == true)
             _pill('Multiunidade', const Color(0xffb79cff)),
+          _pill(
+            item['cashPasswordConfigured'] == true
+                ? 'Caixa protegido'
+                : 'Caixa sem senha',
+            item['cashPasswordConfigured'] == true
+                ? ZenColors.green
+                : ZenColors.red,
+          ),
           if (item['expires_at'] != null && '${item['expires_at']}'.isNotEmpty)
             _pill('Expira: ${item['expires_at']}', ZenColors.muted),
         ]),
@@ -228,6 +236,8 @@ class _AdminScreenState extends State<AdminScreen> {
                 _button('Papel', () => _roleDialog(item, role)),
                 _button('Validade', () => _expiryDialog(item)),
                 _button('Nova senha', () => _passwordDialog(item)),
+                _button('Senha do caixa', () => _cashPasswordDialog(item),
+                    green: item['cashPasswordConfigured'] != true),
                 _button('Desativar', () => _deleteDialog(item), danger: true),
               ]));
 
@@ -612,6 +622,50 @@ class _AdminScreenState extends State<AdminScreen> {
     final ok = await widget.viewModel.resetPassword('${item['id']}', value);
     if (mounted) {
       _snack(ok ? 'Senha redefinida.' : 'Nao foi possivel redefinir a senha.');
+    }
+  }
+
+  Future<void> _cashPasswordDialog(Map<String, dynamic> item) async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Senha do Controle de Caixa'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Barbearia: ${item['shop_name'] ?? item['name'] ?? ''}'),
+            const SizedBox(height: 8),
+            Text(
+              item['cashPasswordConfigured'] == true
+                  ? 'A senha já existe. Informe outra para redefinir.'
+                  : 'Crie a senha exclusiva do dono para liberar o caixa.',
+              style: const TextStyle(color: ZenColors.muted),
+            ),
+            const SizedBox(height: 12),
+            _field(controller, 'Nova senha do caixa (mínimo 4)', obscure: true),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Salvar / redefinir'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null || value.length < 4) return;
+    final ok = await widget.viewModel.setCashPassword('${item['id']}', value);
+    if (mounted) {
+      _snack(ok
+          ? 'Senha do Controle de Caixa salva.'
+          : 'Não foi possível salvar a senha do caixa.');
     }
   }
 

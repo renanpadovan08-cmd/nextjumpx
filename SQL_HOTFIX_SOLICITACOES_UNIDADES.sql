@@ -50,3 +50,29 @@ drop trigger if exists trg_unit_requests_updated_at on public.unit_requests;
 create trigger trg_unit_requests_updated_at
 before update on public.unit_requests
 for each row execute function public.set_unit_requests_updated_at();
+
+create table if not exists public.units (
+  id uuid primary key default gen_random_uuid(),
+  request_id uuid unique,
+  shop_id uuid,
+  shop_name text not null,
+  name text not null,
+  city text,
+  state text,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.barber_unit_assignments (
+  barber_id uuid primary key,
+  unit_id uuid not null,
+  shop_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_units_shop
+  on public.units(shop_id, active, created_at);
+create index if not exists idx_barber_unit_assignments_unit
+  on public.barber_unit_assignments(unit_id, barber_id);

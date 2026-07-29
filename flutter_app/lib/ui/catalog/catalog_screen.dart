@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/model/auth_user_dto.dart';
@@ -71,13 +74,18 @@ class _CatalogScreenState extends State<CatalogScreen> {
               child: ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: CircleAvatar(
-                  child: Text(service.iconText.isEmpty
-                      ? '✂'
-                      : service.iconText.substring(
-                          0,
-                          service.iconText.length > 2
-                              ? 2
-                              : service.iconText.length)),
+                  backgroundImage: service.imageUrl.isEmpty
+                      ? null
+                      : NetworkImage(service.imageUrl),
+                  child: service.imageUrl.isNotEmpty
+                      ? null
+                      : Text(service.iconText.isEmpty
+                          ? '✂'
+                          : service.iconText.substring(
+                              0,
+                              service.iconText.length > 2
+                                  ? 2
+                                  : service.iconText.length)),
                 ),
                 title: Text(service.name,
                     style: const TextStyle(fontWeight: FontWeight.w900)),
@@ -105,6 +113,11 @@ class _CatalogScreenState extends State<CatalogScreen> {
                       onPressed: () => _move(service, 1),
                       icon: const Icon(Icons.arrow_downward),
                       tooltip: 'Mover para baixo',
+                    ),
+                    IconButton(
+                      onPressed: () => _uploadImage(service),
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      tooltip: 'Enviar foto do computador',
                     ),
                     IconButton(
                       onPressed: () => _edit(service),
@@ -338,6 +351,43 @@ class _CatalogScreenState extends State<CatalogScreen> {
       other.id,
       current,
     );
+  }
+
+  Future<void> _uploadImage(ServiceDto service) async {
+    final selection = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+      withData: true,
+    );
+    final file = selection?.files.single;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) return;
+    if (bytes.length > 4 * 1024 * 1024) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('A imagem deve ter no máximo 4 MB.')),
+        );
+      }
+      return;
+    }
+    try {
+      final url = await widget.viewModel.uploadImage(service.id, {
+        'fileName': file.name,
+        'data': base64Encode(bytes),
+      });
+      if (url.isEmpty) throw Exception('URL da imagem não retornada');
+      await widget.viewModel.update(service.id, {'image_url': url});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Foto do serviço atualizada.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
   }
 
   Future<void> _delete(String id) async {

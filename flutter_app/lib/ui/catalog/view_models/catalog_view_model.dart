@@ -24,15 +24,19 @@ class CatalogViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> create(Map<String, dynamic> input) async {
-    await _repository.create(input);
+  Future<ServiceDto> create(Map<String, dynamic> input) async {
+    final created = await _repository.create(input);
     await load(barberId);
+    return created;
   }
 
   Future<void> update(String id, Map<String, dynamic> input) async {
     await _repository.update(id, input);
     await load(barberId);
   }
+
+  Future<String> uploadImage(String id, Map<String, dynamic> input) =>
+      _repository.uploadImage(id, input);
 
   Future<void> reorder(
       String firstId, int firstOrder, String secondId, int secondOrder) async {

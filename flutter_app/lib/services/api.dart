@@ -14,7 +14,12 @@ class ApiClient {
   ApiClient({http.Client? httpClient}) : _http = httpClient ?? http.Client();
   final http.Client _http;
   String? _token;
+  String? _cashToken;
+  String? _unitId;
   void setToken(String? value) => _token = value;
+  void setCashToken(String? value) => _cashToken = value;
+  void setUnitId(String? value) =>
+      _unitId = value == null || value == 'all' || value.isEmpty ? null : value;
 
   Future<dynamic> get(String path, {Map<String, String>? query}) =>
       _send('GET', path, query: query);
@@ -33,6 +38,8 @@ class ApiClient {
     final request = http.Request(method, uri)
       ..headers['Content-Type'] = 'application/json';
     if (_token != null) request.headers['Authorization'] = 'Bearer $_token';
+    if (_cashToken != null) request.headers['X-Cash-Token'] = _cashToken!;
+    if (_unitId != null) request.headers['X-Unit-Id'] = _unitId!;
     if (body != null) request.body = jsonEncode(body);
     final streamed = await _http.send(request);
     final response = await http.Response.fromStream(streamed);

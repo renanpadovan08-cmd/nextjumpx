@@ -18,6 +18,10 @@ class AdminRepositoryImpl implements IAdminRepository {
       _source.resetPassword(barberId, password);
 
   @override
+  Future<void> setCashPassword(String barberId, String password) =>
+      _source.setCashPassword(barberId, password);
+
+  @override
   Future<Map<String, dynamic>> createAccount(Map<String, dynamic> value) =>
       _source.createAccount(value);
 

@@ -8,6 +8,8 @@ class FeatureRemoteDataSource {
   Future<void> pay(String id) => _api.patch('/fixed-clients/payments/$id', {});
   Future<void> createFixedClient(Map<String, dynamic> body) =>
       _api.post('/fixed-clients', body);
+  Future<void> updateFixedClient(String code, Map<String, dynamic> body) =>
+      _api.patch('/fixed-clients/$code', body);
   Future<void> cancelFixedClient(String code) =>
       _api.delete('/fixed-clients/$code');
   Future<dynamic> operations(int tab) => _api.get(tab == 0

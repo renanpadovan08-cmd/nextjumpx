@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as controller from '../controllers/operationsController.js';
 import { requireAuth, requireRoles } from '../middleware/authMiddleware.js';
+import { requireCashUnlock } from '../middleware/cashAccessMiddleware.js';
 import asyncHandler from '../wrapper.js';
 
 const router = Router();
@@ -10,13 +11,15 @@ router.patch('/operations/wallet/:id', requireRoles('admin', 'gerente', 'manager
 router.get('/operations/pending', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.pending));
 router.patch('/operations/pending/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.pendingAction));
 router.get('/operations/commissions', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.commissions));
-router.get('/operations/retention', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.retention));
-router.post('/operations/retention/actions', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.retentionAction));
-router.get('/operations/cash', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.cash));
-router.post('/operations/cash/entries', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.createCashEntry));
-router.delete('/operations/cash/entries/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.deleteCashEntry));
-router.post('/operations/cash/closures', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.createCashClosure));
-router.patch('/operations/cash/receipts/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.updateCashReceipt));
+router.get('/operations/retention', requireRoles('admin', 'gerente', 'manager', 'owner', 'barber', 'barbeiro'), asyncHandler(controller.retention));
+router.post('/operations/retention/actions', requireRoles('admin', 'gerente', 'manager', 'owner', 'barber', 'barbeiro'), asyncHandler(controller.retentionAction));
+router.get('/operations/cash/access', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.cashAccess));
+router.post('/operations/cash/unlock', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.unlockCash));
+router.get('/operations/cash', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.cash));
+router.post('/operations/cash/entries', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.createCashEntry));
+router.delete('/operations/cash/entries/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.deleteCashEntry));
+router.post('/operations/cash/closures', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.createCashClosure));
+router.patch('/operations/cash/receipts/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.updateCashReceipt));
 router.get('/operations/profile', asyncHandler(controller.profile));
 router.patch('/operations/profile', asyncHandler(controller.updateProfile));
 router.get('/operations/hours', requireRoles('admin', 'gerente'), asyncHandler(controller.hours));
@@ -25,6 +28,6 @@ router.post('/operations/hours/closures', requireRoles('admin', 'gerente'), asyn
 router.delete('/operations/hours/closures/:id', requireRoles('admin', 'gerente'), asyncHandler(controller.deleteHoursClosure));
 router.post('/operations/self-closures', asyncHandler(controller.createSelfClosure));
 router.delete('/operations/self-closures/:id', asyncHandler(controller.deleteSelfClosure));
-router.get('/operations/whatsapp', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.whatsapp));
+router.get('/operations/whatsapp', requireRoles('admin', 'gerente', 'manager', 'owner', 'barber', 'barbeiro'), asyncHandler(controller.whatsapp));
 router.get('/operations/backup', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.backup));
 export default router;

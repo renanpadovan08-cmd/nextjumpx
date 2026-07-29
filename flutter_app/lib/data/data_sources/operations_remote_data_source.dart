@@ -18,8 +18,12 @@ class OperationsRemoteDataSource {
 
   Future<List<dynamic>> units() async =>
       await _api.get('/units/requests') as List<dynamic>;
+  Future<Map<String, dynamic>> unitConfiguration() async =>
+      Map<String, dynamic>.from(await _api.get('/units') as Map);
   Future<dynamic> createUnit(Map<String, dynamic> body) =>
       _api.post('/units/requests', body);
+  Future<dynamic> assignBarberUnit(String barberId, String? unitId) =>
+      _api.put('/units/barbers/$barberId', {'unitId': unitId});
   Future<dynamic> createCashEntry(Map<String, dynamic> body) =>
       _api.post('/operations/cash/entries', body);
   Future<void> deleteCashEntry(String id) =>
@@ -28,6 +32,18 @@ class OperationsRemoteDataSource {
       _api.post('/operations/cash/closures', body);
   Future<dynamic> updateCashReceipt(String id, Map<String, dynamic> body) =>
       _api.patch('/operations/cash/receipts/$id', body);
+  Future<Map<String, dynamic>> cashAccess() async => Map<String, dynamic>.from(
+      await _api.get('/operations/cash/access') as Map);
+  Future<String> unlockCash(String password) async {
+    final response = Map<String, dynamic>.from(
+      await _api.post('/operations/cash/unlock', {'password': password}) as Map,
+    );
+    final token = '${response['token'] ?? ''}';
+    _api.setCashToken(token.isEmpty ? null : token);
+    return token;
+  }
+
+  void setCashToken(String? token) => _api.setCashToken(token);
   Future<dynamic> backup() => _api.get('/operations/backup');
   Future<dynamic> createHoursClosure(Map<String, dynamic> body) =>
       _api.post('/operations/hours/closures', body);

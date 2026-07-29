@@ -8,4 +8,6 @@ router.use(requireAuth);
 router.get('/units/requests', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(c.list));
 router.post('/units/requests', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(c.create));
 router.patch('/units/requests/:id', requireRoles('admin'), asyncHandler(c.update));
+router.get('/units', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(c.configuration));
+router.put('/units/barbers/:barberId', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(c.assignBarber));
 export default router;

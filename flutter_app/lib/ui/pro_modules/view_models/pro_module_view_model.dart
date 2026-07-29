@@ -12,6 +12,8 @@ class ProModuleViewModel extends ChangeNotifier {
   bool uploading = false;
   String? error;
   String lastCashCsv = '';
+  bool cashConfigured = false;
+  bool cashUnlocked = false;
   List<Map<String, dynamic>> supportConversations = [];
   List<Map<String, dynamic>> supportMessages = [];
   String? activeConversationId;
@@ -40,8 +42,19 @@ class ProModuleViewModel extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      if (module == ProModule.units) {
-        data = await _repository.units();
+      if (module == ProModule.cash) {
+        final access = await _repository.cashAccess();
+        cashConfigured = access['configured'] == true;
+        if (!cashConfigured || !cashUnlocked) {
+          data = {
+            'accessConfigured': cashConfigured,
+            'locked': cashConfigured,
+          };
+        } else {
+          data = await _repository.get('cash');
+        }
+      } else if (module == ProModule.units) {
+        data = await _repository.unitConfiguration();
       } else if (module == ProModule.support) {
         await _loadSupport();
       } else if (module == ProModule.updates) {
@@ -51,6 +64,14 @@ class ProModuleViewModel extends ChangeNotifier {
       }
       error = null;
     } catch (exception) {
+      if (module == ProModule.cash && cashUnlocked) {
+        cashUnlocked = false;
+        _repository.setCashToken(null);
+        data = {
+          'accessConfigured': cashConfigured,
+          'locked': cashConfigured,
+        };
+      }
       error = '$exception';
     }
     loading = false;
@@ -200,9 +221,33 @@ class ProModuleViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> assignBarberUnit(String barberId, String? unitId) async {
+    try {
+      await _repository.assignBarberUnit(barberId, unitId);
+      await load(ProModule.units);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<String?> createBackupJson() async {
     try {
       return jsonEncode(await _repository.backup());
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> backupData() async {
+    try {
+      return Map<String, dynamic>.from(
+        await _repository.backup() as Map,
+      );
     } catch (exception) {
       error = '$exception';
       notifyListeners();
@@ -302,5 +347,36 @@ class ProModuleViewModel extends ChangeNotifier {
       uploading = false;
       notifyListeners();
     }
+  }
+
+  void restoreCashToken(String token) {
+    if (token.isEmpty) return;
+    _repository.setCashToken(token);
+    cashUnlocked = true;
+  }
+
+  Future<String?> unlockCash(String password) async {
+    try {
+      final token = await _repository.unlockCash(password);
+      if (token.isEmpty) return null;
+      cashUnlocked = true;
+      error = null;
+      await load(ProModule.cash);
+      return token;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return null;
+    }
+  }
+
+  void lockCash() {
+    _repository.setCashToken(null);
+    cashUnlocked = false;
+    data = {
+      'accessConfigured': cashConfigured,
+      'locked': cashConfigured,
+    };
+    notifyListeners();
   }
 }

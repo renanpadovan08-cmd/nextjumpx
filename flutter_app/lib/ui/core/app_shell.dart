@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../services/pwa_install.dart';
+import '../../services/local_preferences.dart';
+import '../../dependency_injection/app_dependencies.dart';
 import '../../dependency_injection/factories/agenda_factory.dart';
 import '../../dependency_injection/factories/admin_factory.dart';
 import '../../dependency_injection/factories/barbers_factory.dart';
@@ -36,6 +38,8 @@ class _AppShellState extends State<AppShell> {
   bool atendimentoOpen = true;
   bool negocioOpen = true;
   bool suporteOpen = false;
+  List<Map<String, dynamic>> _unitOptions = const [];
+  String _activeUnitId = 'all';
 
   late final teamBarbers = BarbersFactory.viewModel();
   late final DashboardScreen dashboard;
@@ -49,20 +53,25 @@ class _AppShellState extends State<AppShell> {
       viewModel: FeatureFactories.fixedClients(),
       barbers: teamBarbers,
       user: widget.app.user!);
-  late final OperationsScreen operations =
-      OperationsScreen(
-        viewModel: FeatureFactories.operations(),
-        canManage: widget.app.user!.isManager,
-      );
+  late final OperationsScreen operations = OperationsScreen(
+    viewModel: FeatureFactories.operations(),
+    canManage: widget.app.user!.isManager,
+  );
   late final PublicBookingScreen publicBooking = PublicBookingScreen(
     viewModel: FeatureFactories.publicBooking(),
     initialLogin: widget.app.user!.login,
     showManagementActions: true,
   );
   late final ProModuleScreen wallet = ProModuleScreen(
-      module: ProModule.wallet, viewModel: ProModuleFactory.build());
+      module: ProModule.wallet,
+      viewModel: ProModuleFactory.build(),
+      shopName: widget.app.user!.shopName,
+      bookingLogin: widget.app.user!.login);
   late final ProModuleScreen whatsapp = ProModuleScreen(
-      module: ProModule.whatsapp, viewModel: ProModuleFactory.build());
+      module: ProModule.whatsapp,
+      viewModel: ProModuleFactory.build(),
+      shopName: widget.app.user!.shopName,
+      bookingLogin: widget.app.user!.login);
   late final ProModuleScreen pending = ProModuleScreen(
       module: ProModule.pending, viewModel: ProModuleFactory.build());
   late final ProModuleScreen reports = ProModuleScreen(
@@ -70,9 +79,16 @@ class _AppShellState extends State<AppShell> {
   late final ProModuleScreen commissions = ProModuleScreen(
       module: ProModule.commissions, viewModel: ProModuleFactory.build());
   late final ProModuleScreen retention = ProModuleScreen(
-      module: ProModule.retention, viewModel: ProModuleFactory.build());
+      module: ProModule.retention,
+      viewModel: ProModuleFactory.build(),
+      shopName: widget.app.user!.shopName,
+      bookingLogin: widget.app.user!.login,
+      onOpenAgenda: () => _navigate(1));
   late final ProModuleScreen cash = ProModuleScreen(
-      module: ProModule.cash, viewModel: ProModuleFactory.build());
+      module: ProModule.cash,
+      viewModel: ProModuleFactory.build(),
+      shopName: widget.app.user!.shopName,
+      bookingLogin: widget.app.user!.login);
   late final ProModuleScreen profile = ProModuleScreen(
       module: ProModule.profile,
       viewModel: ProModuleFactory.build(),
@@ -99,7 +115,51 @@ class _AppShellState extends State<AppShell> {
       canManage: widget.app.user!.isManager,
       onNavigate: _navigate,
     );
+    _loadUnits();
     if (widget.app.user!.isAdmin) index = 19;
+  }
+
+  String get _activeUnitStorageKey =>
+      'zenbarber_active_unit_${widget.app.user!.shopName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_')}';
+
+  Future<void> _loadUnits() async {
+    if (!widget.app.user!.isManager) return;
+    try {
+      final config = await AppDependencies.instance.operationsRepository
+          .unitConfiguration();
+      final units = List<Map<String, dynamic>>.from(
+        (config['units'] as List?) ?? const [],
+      );
+      final saved = readLocalPreference(_activeUnitStorageKey) ?? 'all';
+      final selected =
+          units.any((unit) => '${unit['id']}' == saved) ? saved : 'all';
+      AppDependencies.instance.api.setUnitId(selected);
+      if (!mounted) return;
+      setState(() {
+        _unitOptions = units;
+        _activeUnitId = selected;
+      });
+      if (selected != 'all') {
+        await Future.wait([
+          teamBarbers.load(),
+          dashboard.viewModel.load(),
+        ]);
+      }
+    } catch (_) {
+      // A operação principal continua disponível enquanto a migração
+      // opcional de multiunidade ainda não tiver sido aplicada.
+    }
+  }
+
+  Future<void> _changeUnit(String value) async {
+    AppDependencies.instance.api.setUnitId(value);
+    writeLocalPreference(_activeUnitStorageKey, value);
+    setState(() => _activeUnitId = value);
+    await Future.wait([
+      teamBarbers.load(),
+      dashboard.viewModel.load(),
+    ]);
+    if (mounted) _navigate(index);
   }
 
   List<Widget> get screens => [
@@ -166,6 +226,7 @@ class _AppShellState extends State<AppShell> {
         support.viewModel.load(ProModule.support);
       case 17:
         units.viewModel.load(ProModule.units);
+        _loadUnits();
       case 18:
         updates.viewModel.load(ProModule.updates);
       case 19:
@@ -307,8 +368,14 @@ class _AppShellState extends State<AppShell> {
               ),
               if (constraints.maxWidth >= 740) ...[
                 if (widget.app.user!.isManager) ...[
-                  const _UnitPicker(),
-                  const SizedBox(width: 10),
+                  if (_unitOptions.isNotEmpty) ...[
+                    _UnitPicker(
+                      units: _unitOptions,
+                      value: _activeUnitId,
+                      onChanged: _changeUnit,
+                    ),
+                    const SizedBox(width: 10),
+                  ],
                   _HeaderButton(
                       label: 'Gerenciar',
                       onTap: () =>
@@ -348,12 +415,12 @@ class _AppShellState extends State<AppShell> {
                     if (atendimentoOpen) ...[
                       _nav('Agenda Premium', Icons.calendar_month_rounded, 1),
                       _nav('Link do cliente', Icons.link_rounded, 4),
+                      _nav('Central WhatsApp',
+                          Icons.chat_bubble_outline_rounded, 5),
                       if (widget.app.user!.isManager) ...[
                         _nav('Clientes em carteira',
                             Icons.account_balance_wallet_outlined, 2),
                         _nav('Clientes fixos', Icons.repeat_rounded, 3),
-                        _nav('Central WhatsApp',
-                            Icons.chat_bubble_outline_rounded, 5),
                       ],
                     ],
                     const SizedBox(height: 10),
@@ -362,6 +429,7 @@ class _AppShellState extends State<AppShell> {
                     if (negocioOpen) ...[
                       _nav('Dashboard PRO', Icons.grid_view_rounded, 0),
                       _nav('Meu Negócio', Icons.storefront_outlined, 6),
+                      _nav('Retenção', Icons.track_changes_rounded, 10),
                       if (widget.app.user!.isAdmin)
                         _nav('Gestao PRO', Icons.admin_panel_settings_outlined,
                             19),
@@ -371,7 +439,6 @@ class _AppShellState extends State<AppShell> {
                         _nav('Ranking / Comissão', Icons.emoji_events_outlined,
                             8),
                         _nav('Comissões', Icons.payments_outlined, 9),
-                        _nav('Retenção', Icons.track_changes_rounded, 10),
                         _nav('Unidades', Icons.apartment_rounded, 17),
                         _nav('Controle de Caixa', Icons.point_of_sale_outlined,
                             11),
@@ -492,8 +559,9 @@ class _AppShellState extends State<AppShell> {
               height: 36,
               padding: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
-                color:
-                    selected ? const Color(0xff063624) : const Color(0xff0a1420),
+                color: selected
+                    ? const Color(0xff063624)
+                    : const Color(0xff0a1420),
                 border: Border.all(
                     color: selected ? ZenColors.green : Colors.transparent),
                 borderRadius: BorderRadius.circular(11),
@@ -509,15 +577,15 @@ class _AppShellState extends State<AppShell> {
                     child: Text(label,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: selected
-                              ? const Color(0xff8fffb1)
-                              : const Color(0xffb5c2d3))))
-            ]),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: selected
+                                ? const Color(0xff8fffb1)
+                                : const Color(0xffb5c2d3))))
+              ]),
+            ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -561,7 +629,14 @@ class _AppShellState extends State<AppShell> {
 }
 
 class _UnitPicker extends StatelessWidget {
-  const _UnitPicker();
+  const _UnitPicker({
+    required this.units,
+    required this.value,
+    required this.onChanged,
+  });
+  final List<Map<String, dynamic>> units;
+  final String value;
+  final ValueChanged<String> onChanged;
   @override
   Widget build(BuildContext context) => Container(
         height: 70,
@@ -576,20 +651,26 @@ class _UnitPicker extends StatelessWidget {
                   fontSize: 11,
                   fontWeight: FontWeight.w900)),
           const SizedBox(width: 10),
-          Container(
+          SizedBox(
               width: 230,
-              padding: const EdgeInsets.symmetric(horizontal: 13),
-              decoration: BoxDecoration(
-                  color: const Color(0xff0a1019),
-                  border: Border.all(color: const Color(0xff283443)),
-                  borderRadius: BorderRadius.circular(14)),
-              child: const Row(children: [
-                Expanded(
-                    child: Text('Todas as unidades',
-                        style: TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w700))),
-                Icon(Icons.keyboard_arrow_down_rounded)
-              ]))
+              child: DropdownButtonFormField<String>(
+                initialValue: value,
+                isExpanded: true,
+                items: [
+                  const DropdownMenuItem(
+                    value: 'all',
+                    child: Text('Todas as unidades'),
+                  ),
+                  ...units.map((unit) => DropdownMenuItem(
+                        value: '${unit['id']}',
+                        child: Text('${unit['name'] ?? 'Unidade'}'),
+                      )),
+                ],
+                onChanged: (selected) {
+                  if (selected != null) onChanged(selected);
+                },
+                decoration: const InputDecoration(isDense: true),
+              ))
         ]),
       );
 }

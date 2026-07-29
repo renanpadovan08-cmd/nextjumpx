@@ -107,7 +107,7 @@ async function ensurePublicImagesBucket() {
 
 export async function uploadPublicImage(user, input) {
   const image = decodeImageUpload(input);
-  const kind = ['logo', 'background', 'professional', 'support'].includes(input.kind)
+  const kind = ['logo', 'background', 'professional', 'service', 'support'].includes(input.kind)
     ? input.kind
     : 'image';
 
@@ -120,6 +120,8 @@ export async function uploadPublicImage(user, input) {
     ? `${shop}/${owner}/support/${Date.now()}_${randomUUID()}`
     : kind === 'professional'
       ? professionalImageBasePath(user, subject)
+      : kind === 'service'
+        ? `${shop}/${subject}/service`
     : `${shop}/${owner}/${kind}`;
   const path = `${basePath}.${image.extension}`;
   const bucket = supabase.storage.from(publicImagesBucket);

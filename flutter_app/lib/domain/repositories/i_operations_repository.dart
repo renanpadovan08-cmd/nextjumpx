@@ -4,11 +4,16 @@ abstract interface class IOperationsRepository {
   Future<dynamic> patchBarber(String id, Map<String, dynamic> body);
   Future<dynamic> patchCurrent(String feature, Map<String, dynamic> body);
   Future<List<dynamic>> units();
+  Future<Map<String, dynamic>> unitConfiguration();
   Future<dynamic> createUnit(Map<String, dynamic> body);
+  Future<dynamic> assignBarberUnit(String barberId, String? unitId);
   Future<dynamic> createCashEntry(Map<String, dynamic> body);
   Future<void> deleteCashEntry(String id);
   Future<dynamic> createCashClosure(Map<String, dynamic> body);
   Future<dynamic> updateCashReceipt(String id, Map<String, dynamic> body);
+  Future<Map<String, dynamic>> cashAccess();
+  Future<String> unlockCash(String password);
+  void setCashToken(String? token);
   Future<dynamic> backup();
   Future<dynamic> createHoursClosure(Map<String, dynamic> body);
   Future<void> deleteHoursClosure(String id);

@@ -6,11 +6,16 @@ import {
 } from '../services/accessService.js';
 import { isInternalService } from '../services/servicePolicy.js';
 import { HttpError } from '../utils/httpError.js';
+import { filterBarbersBySelectedUnit } from '../services/unitScopeService.js';
 
-async function ensureServiceAccess(user, serviceId) {
+async function ensureServiceAccess(req, serviceId) {
+  const { user } = req;
   const current = await one(supabase.from('services').select('*,barbers!inner(id,shop_name,shop_id)').eq('id', serviceId), 'Servico nao encontrado');
   if (!isAdminRole(user.role) && !sameShop(user, current.barbers)) throw new HttpError(403, 'Servico fora da sua barbearia');
   if (isRestrictedBarber(user) && current.barber_id !== user.id) throw new HttpError(403, 'Voce so pode alterar seus proprios servicos');
+  if (!(await filterBarbersBySelectedUnit(req, [current.barbers])).length) {
+    throw new HttpError(403, 'Servico fora da unidade selecionada');
+  }
   return current;
 }
 
@@ -21,10 +26,17 @@ export async function listServices(req, res) {
     const barber = await one(supabase.from('barbers').select('id,shop_name,shop_id').eq('id', barberId), 'Barbeiro nao encontrado');
     if (!isAdminRole(req.user.role) && !sameShop(req.user, barber)) throw new HttpError(403, 'Barbeiro fora da sua barbearia');
     if (isRestrictedBarber(req.user) && barber.id !== req.user.id) throw new HttpError(403, 'Voce so pode acessar seus proprios servicos');
+    if (!(await filterBarbersBySelectedUnit(req, [barber])).length) {
+      throw new HttpError(403, 'Barbeiro fora da unidade selecionada');
+    }
     builder.eq('barber_id', barberId);
-  } else if (!isAdminRole(req.user.role)) {
+  } else {
     let barbers;
-    if (isRestrictedBarber(req.user)) {
+    if (isAdminRole(req.user.role)) {
+      barbers = await query(
+        supabase.from('barbers').select('id,shop_id,shop_name'),
+      );
+    } else if (isRestrictedBarber(req.user)) {
       barbers = [{ id: req.user.id }];
     } else {
       let shopBuilder = supabase.from('barbers').select('id');
@@ -32,6 +44,11 @@ export async function listServices(req, res) {
         ? shopBuilder.eq('shop_id', req.user.shopId)
         : shopBuilder.eq('shop_name', req.user.shopName);
       barbers = await query(shopBuilder);
+    }
+    barbers = await filterBarbersBySelectedUnit(req, barbers);
+    if (!barbers.length) {
+      res.json([]);
+      return;
     }
     builder.in('barber_id', barbers.map((barber) => barber.id));
   }
@@ -45,13 +62,16 @@ export async function createService(req, res) {
   const barber = await one(supabase.from('barbers').select('id,shop_name,shop_id').eq('id', barberId), 'Barbeiro nao encontrado');
   if (!isAdminRole(req.user.role) && !sameShop(req.user, barber)) throw new HttpError(403, 'Barbeiro fora da sua barbearia');
   if (isRestrictedBarber(req.user) && barber.id !== req.user.id) throw new HttpError(403, 'Voce so pode criar seus proprios servicos');
+  if (!(await filterBarbersBySelectedUnit(req, [barber])).length) {
+    throw new HttpError(403, 'Barbeiro fora da unidade selecionada');
+  }
   if (!Number.isFinite(Number(price)) || Number(price) < 0) throw new HttpError(400, 'Preco do servico invalido');
   if (!Number.isInteger(Number(duration)) || Number(duration) < 1 || Number(duration) > 1440) throw new HttpError(400, 'Duracao do servico invalida');
   res.status(201).json(await query(supabase.from('services').insert({ barber_id: barberId, shop_id: barber.shop_id || req.user.shopId || null, name: name.trim(), price: Number(price), duration: Number(duration), icon_text: iconText || '', image_url: imageUrl || null, active: true }).select().single()));
 }
 
 export async function updateService(req, res) {
-  await ensureServiceAccess(req.user, req.params.id);
+  await ensureServiceAccess(req, req.params.id);
   const allowed = ['name', 'price', 'duration', 'icon_text', 'image_url', 'display_order'];
   const patch = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
   if (patch.name != null && !String(patch.name).trim()) throw new HttpError(400, 'Nome do servico e obrigatorio');
@@ -62,7 +82,7 @@ export async function updateService(req, res) {
 }
 
 export async function deleteService(req, res) {
-  await ensureServiceAccess(req.user, req.params.id);
+  await ensureServiceAccess(req, req.params.id);
   await query(supabase.from('services').update({ active: false }).eq('id', req.params.id));
   res.status(204).end();
 }

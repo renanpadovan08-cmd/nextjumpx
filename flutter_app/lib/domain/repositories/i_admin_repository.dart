@@ -3,6 +3,7 @@ abstract interface class IAdminRepository {
   Future<Map<String, dynamic>> updateAccess(
       String barberId, Map<String, dynamic> value);
   Future<void> resetPassword(String barberId, String password);
+  Future<void> setCashPassword(String barberId, String password);
   Future<Map<String, dynamic>> createAccount(Map<String, dynamic> value);
   Future<Map<String, dynamic>> updateSettings(
       String barberId, Map<String, dynamic> value);

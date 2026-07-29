@@ -1,9 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/date_format.dart';
 import '../../data/model/auth_user_dto.dart';
 import '../../data/model/appointment_dto.dart';
+import '../../routing/public_booking_route.dart';
+import '../../services/local_preferences.dart';
+import '../../services/whatsapp_templates.dart';
 import '../catalog/view_models/catalog_view_model.dart';
 import '../barbers/view_models/barbers_view_model.dart';
 import '../core/theme/zen_colors.dart';
@@ -31,10 +36,17 @@ class AgendaScreen extends StatefulWidget {
 
 class _AgendaScreenState extends State<AgendaScreen> {
   String? _selectedBarberId;
+  late final WhatsappTemplateStore _templateStore;
+  late Map<String, String> _whatsTemplates;
 
   @override
   void initState() {
     super.initState();
+    _templateStore = WhatsappTemplateStore(
+      shopName: widget.user.shopName,
+      login: widget.user.login,
+    );
+    _whatsTemplates = _templateStore.load();
     widget.viewModel.addListener(_refresh);
     widget.catalog.addListener(_refresh);
     widget.barbers.addListener(_refresh);
@@ -71,7 +83,20 @@ class _AgendaScreenState extends State<AgendaScreen> {
   }
 
   void _refresh() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    final ids = widget.barbers.items.map((barber) => barber.id).toSet();
+    if (_selectedBarberId != null && !ids.contains(_selectedBarberId)) {
+      final next = ids.firstOrNull;
+      _selectedBarberId = next;
+      if (next == null) {
+        widget.viewModel
+          ..items = const []
+          ..selectedBarberId = null;
+      } else {
+        Future.microtask(() => _selectBarber(next));
+      }
+    }
+    setState(() {});
   }
 
   @override
@@ -85,6 +110,12 @@ class _AgendaScreenState extends State<AgendaScreen> {
       child: ZenPage(
         title: 'Agenda premium',
         actions: [
+          if (widget.user.isManager)
+            OutlinedButton.icon(
+              onPressed: _editWhatsTemplates,
+              icon: const Icon(Icons.chat_outlined),
+              label: const Text('Modelos WhatsApp'),
+            ),
           if (widget.user.canSelfBlockAgenda &&
               _selectedBarberId == widget.user.id)
             OutlinedButton.icon(
@@ -93,7 +124,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
               label: const Text('Bloquear minha agenda'),
             ),
           FilledButton.icon(
-            onPressed: _create,
+            onPressed: () => _create(),
             icon: const Icon(Icons.add),
             label: const Text('Novo horário'),
           ),
@@ -125,6 +156,8 @@ class _AgendaScreenState extends State<AgendaScreen> {
           if (widget.viewModel.overdueUnconfirmed.isNotEmpty) _overdueCard(),
           const SizedBox(height: 12),
           _nextClientCard(),
+          const SizedBox(height: 18),
+          _quickSlots(),
           const SizedBox(height: 18),
           _agendaTimeline(),
         ],
@@ -315,7 +348,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
             label: const Text('Confirmar'),
           ),
           OutlinedButton(
-            onPressed: () => _copyWhats(next, 'reschedule'),
+            onPressed: () => _edit(next),
             child: const Text('Remarcar'),
           ),
           if (['agendado', 'encaixe'].contains(next.status))
@@ -421,6 +454,31 @@ class _AgendaScreenState extends State<AgendaScreen> {
               ZenStatusPill(
                   label: _statusLabel(item.status),
                   color: _statusColor(item.status)),
+              if (['agendado', 'encaixe', 'em_andamento'].contains(item.status))
+                Draggable<AppointmentDto>(
+                  data: item,
+                  feedback: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      width: 230,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xff102033),
+                        border: Border.all(color: ZenColors.green),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text('${item.time} • ${item.clientName}'),
+                    ),
+                  ),
+                  childWhenDragging: const Icon(
+                    Icons.drag_indicator,
+                    color: ZenColors.muted,
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Icon(Icons.drag_indicator),
+                  ),
+                ),
             ],
           ),
           children: [
@@ -713,22 +771,221 @@ class _AgendaScreenState extends State<AgendaScreen> {
     final price = _money(item.servicePrice);
     final date = isoToBrazilianDate(widget.viewModel.selectedDate);
 
-    final templates = {
-      'confirm':
-          'Olá $firstName, tudo bem? Passando para confirmar seu horário na $shop hoje às ${item.time}. Posso confirmar?',
-      'reminder':
-          'Olá $firstName, passando para lembrar do seu horário na $shop: $date às ${item.time}. Serviço: $service.',
-      'delay':
-          'Olá $firstName, tudo bem? Seu horário na $shop era às ${item.time}. Me avisa se ainda vem ou se prefere remarcar?',
-      'reschedule':
-          'Olá $firstName, tudo bem? Precisamos ajustar seu horário na $shop. Me chama por aqui para remarcarmos o melhor horário para você.',
-      'charge':
-          'Olá $firstName, tudo bem? Passando para lembrar do valor de $price referente ao $service na $shop.',
+    final barberName = widget.barbers.items
+        .where((barber) => barber.id == item.barberId)
+        .map((barber) => barber.name)
+        .firstOrNull;
+    final replacements = {
+      'cliente': item.clientName,
+      'primeiro_nome': firstName,
+      'barbearia': shop,
+      'data': date,
+      'horario': item.time,
+      'servico': service,
+      'barbeiro': barberName ?? 'barbeiro',
+      'valor': price,
+      'link': publicBookingUri(Uri.base, widget.user.login).toString(),
     };
-    return templates[type] ?? templates['reminder']!;
+    return _templateStore.fill(_whatsTemplates, type, replacements);
   }
 
-  Future<void> _create() async {
+  Widget _quickSlots() {
+    final selected = widget.barbers.items
+        .where((barber) => barber.id == _selectedBarberId)
+        .firstOrNull;
+    if (selected == null) return const SizedBox.shrink();
+    int minutes(String value) {
+      final parts = value.split(':').map(int.tryParse).toList();
+      return (parts.first ?? 0) * 60 + (parts.length > 1 ? parts[1] ?? 0 : 0);
+    }
+
+    final start = minutes(selected.workStart);
+    final end = minutes(selected.workEnd);
+    final slots = <String>[];
+    for (var value = start; value + 30 <= end; value += 30) {
+      final time =
+          '${(value ~/ 60).toString().padLeft(2, '0')}:${(value % 60).toString().padLeft(2, '0')}';
+      if (_slotAvailable(time, 30)) slots.add(time);
+    }
+    if (slots.isEmpty) return const SizedBox.shrink();
+    return ZenCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Horários livres rápidos',
+            style: TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Clique para agendar ou arraste um cliente pelo ícone para remarcar.',
+            style: TextStyle(color: ZenColors.muted),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final time in slots.take(18))
+                DragTarget<AppointmentDto>(
+                  onWillAcceptWithDetails: (details) => _slotAvailable(
+                      time, details.data.serviceDuration,
+                      ignoreId: details.data.id),
+                  onAcceptWithDetails: (details) =>
+                      _moveToSlot(details.data, time),
+                  builder: (context, candidates, _) => OutlinedButton(
+                    style: candidates.isEmpty
+                        ? null
+                        : OutlinedButton.styleFrom(
+                            backgroundColor:
+                                ZenColors.green.withValues(alpha: .18),
+                            side: const BorderSide(color: ZenColors.green),
+                          ),
+                    onPressed: () => _create(initialTime: time),
+                    child: Text(time),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  bool _slotAvailable(String time, int duration, {String? ignoreId}) {
+    int minutes(String value) {
+      final parts = value.split(':').map(int.tryParse).toList();
+      return (parts.first ?? 0) * 60 + (parts.length > 1 ? parts[1] ?? 0 : 0);
+    }
+
+    final start = minutes(time);
+    final end = start + duration;
+    return !widget.viewModel.items.any((item) {
+      if (item.id == ignoreId ||
+          !['agendado', 'encaixe', 'em_andamento', 'bloqueio']
+              .contains(item.status)) {
+        return false;
+      }
+      final otherStart = minutes(item.time);
+      final otherEnd = otherStart + item.serviceDuration;
+      return start < otherEnd && otherStart < end;
+    });
+  }
+
+  Future<void> _moveToSlot(AppointmentDto item, String time) async {
+    try {
+      await widget.viewModel.update(item.id, {
+        'barberId': _selectedBarberId,
+        'date': widget.viewModel.selectedDate,
+        'time': time,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${item.clientName} remarcado para $time.')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
+    }
+  }
+
+  Future<void> _editWhatsTemplates() async {
+    const labels = <String, String>{
+      'confirm': 'Confirmar horário',
+      'reminder': 'Lembrete',
+      'delay': 'Atraso / passou do horário',
+      'reschedule': 'Reagendar',
+      'charge': 'Cobrança',
+      'comeback': 'Cliente ausente',
+      'thanks': 'Agradecimento',
+    };
+    final controllers = {
+      for (final key in labels.keys)
+        key: TextEditingController(text: _whatsTemplates[key]),
+    };
+    final action = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Modelos de WhatsApp'),
+        content: SizedBox(
+          width: 680,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Variáveis: {primeiro_nome}, {cliente}, {barbearia}, {data}, {horario}, {servico}, {barbeiro}, {valor}, {link}',
+                  style: TextStyle(color: ZenColors.muted),
+                ),
+                const SizedBox(height: 12),
+                for (final entry in labels.entries) ...[
+                  TextField(
+                    controller: controllers[entry.key],
+                    minLines: 3,
+                    maxLines: 7,
+                    decoration: InputDecoration(labelText: entry.value),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, 'reset'),
+            child: const Text('Restaurar padrão'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'save'),
+            child: const Text('Salvar modelos'),
+          ),
+        ],
+      ),
+    );
+    if (action == 'save') {
+      final updated = {
+        for (final entry in controllers.entries)
+          entry.key: entry.value.text.trim(),
+      };
+      _templateStore.save(updated);
+      if (mounted) setState(() => _whatsTemplates = updated);
+    } else if (action == 'reset') {
+      _templateStore.reset();
+      if (mounted) {
+        setState(() {
+          _whatsTemplates =
+              Map<String, String>.from(WhatsappTemplateStore.defaults);
+        });
+      }
+    }
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+  }
+
+  String get _agendaDraftKey =>
+      'zenbarber_agenda_draft_${widget.user.shopName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_-]+'), '_')}';
+
+  Map<String, dynamic> _readAgendaDraft() {
+    try {
+      final value = readSessionPreference(_agendaDraftKey);
+      return value == null
+          ? <String, dynamic>{}
+          : Map<String, dynamic>.from(jsonDecode(value) as Map);
+    } catch (_) {
+      return <String, dynamic>{};
+    }
+  }
+
+  Future<void> _create({String? initialTime}) async {
     if (_selectedBarberId == null || widget.catalog.items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -745,15 +1002,44 @@ class _AgendaScreenState extends State<AgendaScreen> {
       return;
     }
 
-    final name = TextEditingController();
-    final phone = TextEditingController();
-    var selectedDate =
-        parseIsoDate(widget.viewModel.selectedDate) ?? DateTime.now();
+    final draft = _readAgendaDraft();
+    final name = TextEditingController(text: '${draft['name'] ?? ''}');
+    final phone = TextEditingController(text: '${draft['phone'] ?? ''}');
+    var selectedDate = parseIsoDate(
+          '${draft['date'] ?? widget.viewModel.selectedDate}',
+        ) ??
+        DateTime.now();
     final date = TextEditingController(text: brazilianDate(selectedDate));
-    final time = TextEditingController(text: '09:00');
-    var service = widget.catalog.items.first.id;
+    final time = TextEditingController(
+      text: initialTime ?? '${draft['time'] ?? '09:00'}',
+    );
+    var service = widget.catalog.items.any(
+      (item) => item.id == '${draft['serviceId'] ?? ''}',
+    )
+        ? '${draft['serviceId']}'
+        : widget.catalog.items.first.id;
+    var status = ['agendado', 'encaixe'].contains(draft['status'])
+        ? '${draft['status']}'
+        : 'agendado';
 
-    var status = 'agendado';
+    void saveDraft() {
+      writeSessionPreference(
+        _agendaDraftKey,
+        jsonEncode({
+          'name': name.text,
+          'phone': phone.text,
+          'date': isoDate(selectedDate),
+          'time': time.text,
+          'serviceId': service,
+          'status': status,
+          'savedAt': DateTime.now().toIso8601String(),
+        }),
+      );
+    }
+
+    name.addListener(saveDraft);
+    phone.addListener(saveDraft);
+    time.addListener(saveDraft);
 
     final data = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -782,7 +1068,10 @@ class _AgendaScreenState extends State<AgendaScreen> {
                       ),
                     )
                     .toList(),
-                onChanged: (value) => service = value ?? service,
+                onChanged: (value) {
+                  service = value ?? service;
+                  saveDraft();
+                },
                 decoration: const InputDecoration(labelText: 'Serviço'),
               ),
               const SizedBox(height: 8),
@@ -792,7 +1081,10 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   DropdownMenuItem(value: 'agendado', child: Text('Agendado')),
                   DropdownMenuItem(value: 'encaixe', child: Text('Encaixe')),
                 ],
-                onChanged: (value) => status = value ?? status,
+                onChanged: (value) {
+                  status = value ?? status;
+                  saveDraft();
+                },
                 decoration:
                     const InputDecoration(labelText: 'Tipo de agendamento'),
               ),
@@ -811,6 +1103,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                   if (picked != null) {
                     selectedDate = picked;
                     date.text = brazilianDate(picked);
+                    saveDraft();
                   }
                 },
                 decoration: const InputDecoration(
@@ -861,6 +1154,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
         'date': data['date'],
         'time': data['time'],
       });
+      removeSessionPreference(_agendaDraftKey);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Horário agendado.')),
@@ -1094,110 +1388,147 @@ class _AgendaScreenState extends State<AgendaScreen> {
         DateTime.now();
     final date = TextEditingController(text: brazilianDate(selectedDate));
     final time = TextEditingController(text: item?.time ?? '09:00');
+    var selectedBarber = item?.barberId ?? _selectedBarberId ?? widget.user.id;
     var service = item?.serviceId ?? widget.catalog.items.first.id;
     var status = item?.status ?? 'agendado';
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(item == null ? 'Novo horário' : 'Editar horário'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                decoration: const InputDecoration(labelText: 'Cliente'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: phone,
-                decoration: const InputDecoration(labelText: 'WhatsApp'),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: service,
-                items: widget.catalog.items
-                    .map(
-                      (item) => DropdownMenuItem(
-                        value: item.id,
-                        child: Text(
-                            '${item.name} · R\$ ${item.price.toStringAsFixed(2)}'),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => service = value ?? service,
-                decoration: const InputDecoration(labelText: 'Serviço'),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                initialValue: status,
-                items: const [
-                  DropdownMenuItem(value: 'agendado', child: Text('Agendado')),
-                  DropdownMenuItem(value: 'encaixe', child: Text('Encaixe')),
-                  DropdownMenuItem(
-                      value: 'em_andamento', child: Text('Em andamento')),
-                  DropdownMenuItem(value: 'concluido', child: Text('Pago')),
-                  DropdownMenuItem(
-                      value: 'finalizado', child: Text('Finalizado')),
-                  DropdownMenuItem(value: 'faltou', child: Text('Faltou')),
-                  DropdownMenuItem(
-                      value: 'cancelado', child: Text('Cancelado')),
-                ],
-                onChanged: (value) => status = value ?? status,
-                decoration: const InputDecoration(labelText: 'Status'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: date,
-                readOnly: true,
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    locale: const Locale('pt', 'BR'),
-                    initialDate: selectedDate,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime(2100),
-                  );
-                  if (picked != null) {
-                    selectedDate = picked;
-                    date.text = brazilianDate(picked);
-                  }
-                },
-                decoration: const InputDecoration(
-                  labelText: 'Data',
-                  hintText: 'DD/MM/AAAA',
-                  suffixIcon: Icon(Icons.calendar_month),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(item == null ? 'Novo horário' : 'Editar / remarcar'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'Cliente'),
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: time,
-                decoration: const InputDecoration(labelText: 'Horário (HH:MM)'),
-              ),
-            ],
+                const SizedBox(height: 8),
+                TextField(
+                  controller: phone,
+                  decoration: const InputDecoration(labelText: 'WhatsApp'),
+                ),
+                const SizedBox(height: 8),
+                if (item != null && widget.user.isManager) ...[
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('barber-$selectedBarber'),
+                    initialValue: selectedBarber,
+                    items: widget.barbers.items
+                        .map(
+                          (barber) => DropdownMenuItem(
+                            value: barber.id,
+                            child: Text(barber.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) async {
+                      if (value == null || value == selectedBarber) return;
+                      selectedBarber = value;
+                      await widget.catalog.load(value);
+                      service = widget.catalog.items.firstOrNull?.id ?? '';
+                      if (context.mounted) setDialogState(() {});
+                    },
+                    decoration:
+                        const InputDecoration(labelText: 'Profissional'),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                DropdownButtonFormField<String>(
+                  key: ValueKey('service-$selectedBarber-$service'),
+                  initialValue: service.isEmpty ? null : service,
+                  items: widget.catalog.items
+                      .map(
+                        (item) => DropdownMenuItem(
+                          value: item.id,
+                          child: Text(
+                              '${item.name} · R\$ ${item.price.toStringAsFixed(2)}'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) => service = value ?? service,
+                  decoration: const InputDecoration(labelText: 'Serviço'),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<String>(
+                  initialValue: status,
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'agendado', child: Text('Agendado')),
+                    DropdownMenuItem(value: 'encaixe', child: Text('Encaixe')),
+                    DropdownMenuItem(
+                        value: 'em_andamento', child: Text('Em andamento')),
+                    DropdownMenuItem(value: 'concluido', child: Text('Pago')),
+                    DropdownMenuItem(
+                        value: 'finalizado', child: Text('Finalizado')),
+                    DropdownMenuItem(value: 'faltou', child: Text('Faltou')),
+                    DropdownMenuItem(
+                        value: 'cancelado', child: Text('Cancelado')),
+                  ],
+                  onChanged: (value) => status = value ?? status,
+                  decoration: const InputDecoration(labelText: 'Status'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: date,
+                  readOnly: true,
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      locale: const Locale('pt', 'BR'),
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2100),
+                    );
+                    if (picked != null) {
+                      selectedDate = picked;
+                      date.text = brazilianDate(picked);
+                    }
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Data',
+                    hintText: 'DD/MM/AAAA',
+                    suffixIcon: Icon(Icons.calendar_month),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: time,
+                  decoration:
+                      const InputDecoration(labelText: 'Horário (HH:MM)'),
+                ),
+              ],
+            ),
           ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: service.isEmpty
+                  ? null
+                  : () => Navigator.pop(context, {
+                        'barberId': selectedBarber,
+                        'serviceId': service,
+                        'clientName': name.text.trim(),
+                        'clientPhone': phone.text.trim(),
+                        'status': status,
+                        'date': isoDate(selectedDate),
+                        'time': time.text.trim(),
+                      }),
+              child: const Text('Salvar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, {
-              'serviceId': service,
-              'clientName': name.text.trim(),
-              'clientPhone': phone.text.trim(),
-              'status': status,
-              'date': isoDate(selectedDate),
-              'time': time.text.trim(),
-            }),
-            child: const Text('Salvar'),
-          ),
-        ],
       ),
     );
 
+    if (_selectedBarberId != null &&
+        widget.catalog.barberId != _selectedBarberId) {
+      await widget.catalog.load(_selectedBarberId);
+    }
     name.dispose();
     phone.dispose();
     date.dispose();

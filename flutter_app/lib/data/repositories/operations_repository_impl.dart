@@ -23,8 +23,16 @@ class OperationsRepositoryImpl implements IOperationsRepository {
   Future<List<dynamic>> units() => _source.units();
 
   @override
+  Future<Map<String, dynamic>> unitConfiguration() =>
+      _source.unitConfiguration();
+
+  @override
   Future<dynamic> createUnit(Map<String, dynamic> body) =>
       _source.createUnit(body);
+
+  @override
+  Future<dynamic> assignBarberUnit(String barberId, String? unitId) =>
+      _source.assignBarberUnit(barberId, unitId);
 
   @override
   Future<dynamic> createCashEntry(Map<String, dynamic> body) =>
@@ -37,6 +45,12 @@ class OperationsRepositoryImpl implements IOperationsRepository {
   @override
   Future<dynamic> updateCashReceipt(String id, Map<String, dynamic> body) =>
       _source.updateCashReceipt(id, body);
+  @override
+  Future<Map<String, dynamic>> cashAccess() => _source.cashAccess();
+  @override
+  Future<String> unlockCash(String password) => _source.unlockCash(password);
+  @override
+  void setCashToken(String? token) => _source.setCashToken(token);
   @override
   Future<dynamic> backup() => _source.backup();
   @override

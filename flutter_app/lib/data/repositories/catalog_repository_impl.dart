@@ -14,5 +14,8 @@ class CatalogRepositoryImpl implements ICatalogRepository {
   Future<ServiceDto> update(String id, Map<String, dynamic> input) =>
       _source.update(id, input);
   @override
+  Future<String> uploadImage(String id, Map<String, dynamic> input) =>
+      _source.uploadImage(id, input);
+  @override
   Future<void> delete(String id) => _source.delete(id);
 }

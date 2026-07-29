@@ -8,6 +8,7 @@ import {
   sanitizeBarber,
 } from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
+import { filterBarbersBySelectedUnit } from '../services/unitScopeService.js';
 
 const columns = 'id,name,login,phone,shop_name,shop_id,role,photo_url,background_url,work_start,work_end,lunch_start,lunch_end,off_days,commission_rate,access_status,expires_at,created_at,activation_note,must_change_password';
 
@@ -18,7 +19,8 @@ export async function listBarbers(req, res) {
   builder = req.user.shopId && shop === req.user.shopName
     ? builder.eq('shop_id', req.user.shopId)
     : builder.eq('shop_name', shop);
-  res.json((await query(builder)).map(sanitizeBarber));
+  const barbers = await filterBarbersBySelectedUnit(req, await query(builder));
+  res.json(barbers.map(sanitizeBarber));
 }
 
 export async function publicBarbers(req, res) {
