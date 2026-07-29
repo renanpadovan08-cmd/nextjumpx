@@ -71,73 +71,139 @@ class _CatalogScreenState extends State<CatalogScreen> {
           Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: ZenCard(
-              child: ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  backgroundImage: service.imageUrl.isEmpty
-                      ? null
-                      : NetworkImage(service.imageUrl),
-                  child: service.imageUrl.isNotEmpty
-                      ? null
-                      : Text(service.iconText.isEmpty
-                          ? '✂'
-                          : service.iconText.substring(
-                              0,
-                              service.iconText.length > 2
-                                  ? 2
-                                  : service.iconText.length)),
-                ),
-                title: Text(service.name,
-                    style: const TextStyle(fontWeight: FontWeight.w900)),
-                subtitle: Text(
-                  '${service.duration} minutos · ${_barberName(service.barberId)}',
-                  style: const TextStyle(color: ZenColors.muted),
-                ),
-                trailing: Wrap(
-                  spacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    Text(
-                      'R\$ ${service.price.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        color: ZenColors.jade,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => _move(service, -1),
-                      icon: const Icon(Icons.arrow_upward),
-                      tooltip: 'Mover para cima',
-                    ),
-                    IconButton(
-                      onPressed: () => _move(service, 1),
-                      icon: const Icon(Icons.arrow_downward),
-                      tooltip: 'Mover para baixo',
-                    ),
-                    IconButton(
-                      onPressed: () => _uploadImage(service),
-                      icon: const Icon(Icons.add_photo_alternate_outlined),
-                      tooltip: 'Enviar foto do computador',
-                    ),
-                    IconButton(
-                      onPressed: () => _edit(service),
-                      icon: const Icon(Icons.edit_outlined),
-                      tooltip: 'Editar serviço',
-                    ),
-                    IconButton(
-                      onPressed: () => _delete(service.id),
-                      icon: const Icon(Icons.delete_outline,
-                          color: ZenColors.red),
-                      tooltip: 'Excluir serviço',
-                    ),
-                  ],
-                ),
-              ),
+              child: _serviceTile(service),
             ),
           ),
       ],
     );
   }
+
+  Widget _serviceTile(ServiceDto service) => LayoutBuilder(
+        builder: (context, constraints) {
+          final avatar = CircleAvatar(
+            backgroundImage: service.imageUrl.isEmpty
+                ? null
+                : NetworkImage(service.imageUrl),
+            child: service.imageUrl.isNotEmpty
+                ? null
+                : Text(
+                    service.iconText.isEmpty
+                        ? '✂'
+                        : service.iconText.substring(
+                            0,
+                            service.iconText.length > 2
+                                ? 2
+                                : service.iconText.length,
+                          ),
+                  ),
+          );
+          final details = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                service.name,
+                style: const TextStyle(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '${service.duration} minutos · ${_barberName(service.barberId)}',
+                style: const TextStyle(color: ZenColors.muted),
+              ),
+            ],
+          );
+          final price = Text(
+            'R\$ ${service.price.toStringAsFixed(2)}',
+            style: const TextStyle(
+              color: ZenColors.jade,
+              fontWeight: FontWeight.w900,
+            ),
+          );
+          final actions = _serviceActions(service);
+
+          if (constraints.maxWidth >= 700) {
+            return Row(
+              children: [
+                avatar,
+                const SizedBox(width: 16),
+                Expanded(child: details),
+                const SizedBox(width: 12),
+                price,
+                const SizedBox(width: 4),
+                ...actions,
+              ],
+            );
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  avatar,
+                  const SizedBox(width: 12),
+                  Expanded(child: details),
+                ],
+              ),
+              const SizedBox(height: 12),
+              price,
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 4),
+              Wrap(
+                alignment: WrapAlignment.end,
+                spacing: 2,
+                runSpacing: 2,
+                children: actions,
+              ),
+            ],
+          );
+        },
+      );
+
+  List<Widget> _serviceActions(ServiceDto service) => [
+        _compactIconButton(
+          onPressed: () => _move(service, -1),
+          icon: Icons.arrow_upward,
+          tooltip: 'Mover para cima',
+        ),
+        _compactIconButton(
+          onPressed: () => _move(service, 1),
+          icon: Icons.arrow_downward,
+          tooltip: 'Mover para baixo',
+        ),
+        _compactIconButton(
+          onPressed: () => _uploadImage(service),
+          icon: Icons.add_photo_alternate_outlined,
+          tooltip: 'Enviar foto do computador',
+        ),
+        _compactIconButton(
+          onPressed: () => _edit(service),
+          icon: Icons.edit_outlined,
+          tooltip: 'Editar serviço',
+        ),
+        _compactIconButton(
+          onPressed: () => _delete(service.id),
+          icon: Icons.delete_outline,
+          color: ZenColors.red,
+          tooltip: 'Excluir serviço',
+        ),
+      ];
+
+  Widget _compactIconButton({
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String tooltip,
+    Color? color,
+  }) =>
+      IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, color: color),
+        tooltip: tooltip,
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      );
 
   String _barberName(String id) {
     for (final barber in widget.barbers.items) {

@@ -59,46 +59,78 @@ class _BarbersScreenState extends State<BarbersScreen> {
         for (final barber in widget.viewModel.items)
           Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: ZenCard(
-                  child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: CircleAvatar(
-                          backgroundColor:
-                              ZenColors.green.withValues(alpha: .18),
-                          child: barber.photoUrl.trim().isEmpty
-                              ? const Icon(Icons.person, color: ZenColors.green)
-                              : ClipOval(
-                                  child: Image.network(
-                                    barber.photoUrl,
-                                    width: 40,
-                                    height: 40,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) => const Icon(
-                                        Icons.person,
-                                        color: ZenColors.green),
-                                  ),
-                                )),
-                      title: Text(barber.name,
-                          style: const TextStyle(fontWeight: FontWeight.w900)),
-                      subtitle: Text(
-                          '${barber.role} · ${barber.workStart}–${barber.workEnd}',
-                          style: const TextStyle(color: ZenColors.muted)),
-                      trailing: Wrap(
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          ZenStatusPill(
-                              label:
-                                  '${barber.commissionRate.toStringAsFixed(0)}%',
-                              color: ZenColors.sky),
-                          if (widget.user.isManager ||
-                              widget.user.id == barber.id)
-                            IconButton(
-                              onPressed: () => _edit(barber),
-                              icon: const Icon(Icons.edit_outlined),
-                              tooltip: 'Editar profissional',
+              child:
+                  ZenCard(child: LayoutBuilder(builder: (context, constraints) {
+                final avatar = CircleAvatar(
+                    backgroundColor: ZenColors.green.withValues(alpha: .18),
+                    child: barber.photoUrl.trim().isEmpty
+                        ? const Icon(Icons.person, color: ZenColors.green)
+                        : ClipOval(
+                            child: Image.network(
+                              barber.photoUrl,
+                              width: 40,
+                              height: 40,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Icon(
+                                  Icons.person,
+                                  color: ZenColors.green),
                             ),
-                        ],
-                      )))),
+                          ));
+                final details = Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(barber.name,
+                        style: const TextStyle(fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 3),
+                    Text(
+                        '${barber.role} · ${barber.workStart}–${barber.workEnd}',
+                        style: const TextStyle(color: ZenColors.muted)),
+                  ],
+                );
+                final controls = [
+                  ZenStatusPill(
+                      label: '${barber.commissionRate.toStringAsFixed(0)}%',
+                      color: ZenColors.sky),
+                  if (widget.user.isManager || widget.user.id == barber.id)
+                    IconButton(
+                      onPressed: () => _edit(barber),
+                      icon: const Icon(Icons.edit_outlined),
+                      tooltip: 'Editar profissional',
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ];
+
+                if (constraints.maxWidth >= 560) {
+                  return Row(children: [
+                    avatar,
+                    const SizedBox(width: 16),
+                    Expanded(child: details),
+                    const SizedBox(width: 10),
+                    ...controls,
+                  ]);
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        avatar,
+                        const SizedBox(width: 12),
+                        Expanded(child: details),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 4,
+                      children: controls,
+                    ),
+                  ],
+                );
+              }))),
       ],
     );
   }

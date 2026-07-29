@@ -36,7 +36,12 @@ class NextJumpXLandingScreen extends StatelessWidget {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 830),
                   child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 36, 24, 30),
+                    padding: EdgeInsets.fromLTRB(
+                      MediaQuery.sizeOf(context).width < 500 ? 16 : 24,
+                      MediaQuery.sizeOf(context).width < 500 ? 24 : 36,
+                      MediaQuery.sizeOf(context).width < 500 ? 16 : 24,
+                      30,
+                    ),
                     child: Column(
                       children: [
                         Image.asset(
@@ -56,24 +61,35 @@ class NextJumpXLandingScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 18),
-                        RichText(
-                          textAlign: TextAlign.center,
-                          text: const TextSpan(
-                            style: TextStyle(
-                              fontSize: 62,
-                              fontWeight: FontWeight.w800,
-                              height: .95,
+                        SizedBox(
+                          width: double.infinity,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  'NextJump',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 62,
+                                    fontWeight: FontWeight.w800,
+                                    height: .95,
+                                  ),
+                                ),
+                                Text(
+                                  'X',
+                                  style: TextStyle(
+                                    color: Color(0xff70df00),
+                                    fontSize: 62,
+                                    fontWeight: FontWeight.w800,
+                                    height: .95,
+                                  ),
+                                ),
+                              ],
                             ),
-                            children: [
-                              TextSpan(
-                                text: 'NextJump',
-                                style: TextStyle(color: Colors.white),
-                              ),
-                              TextSpan(
-                                text: 'X',
-                                style: TextStyle(color: Color(0xff70df00)),
-                              ),
-                            ],
                           ),
                         ),
                         const SizedBox(height: 30),

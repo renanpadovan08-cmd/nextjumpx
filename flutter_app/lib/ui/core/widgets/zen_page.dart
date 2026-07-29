@@ -12,27 +12,56 @@ class ZenPage extends StatelessWidget {
   final List<Widget> children;
   final List<Widget> actions;
   @override
-  Widget build(BuildContext context) =>
-      ListView(padding: const EdgeInsets.fromLTRB(20, 22, 20, 40), children: [
-        Row(children: [
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 600;
+          final heading = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 4),
+              const Text(
+                'ZenBarber Pro',
+                style: TextStyle(
+                  color: ZenColors.green,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ],
+          );
+
+          return ListView(
+            padding: EdgeInsets.fromLTRB(
+              compact ? 14 : 20,
+              compact ? 16 : 22,
+              compact ? 14 : 20,
+              40,
+            ),
+            children: [
+              if (compact) ...[
+                heading,
+                if (actions.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  for (var index = 0; index < actions.length; index++) ...[
+                    actions[index],
+                    if (index < actions.length - 1) const SizedBox(height: 8),
+                  ],
+                ],
+              ] else
+                Row(
                   children: [
-                Text(title, style: Theme.of(context).textTheme.headlineSmall),
-                const SizedBox(height: 4),
-                const Text('ZenBarber Pro',
-                    style: TextStyle(
-                        color: ZenColors.green,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.1))
-              ])),
-          ...actions
-        ]),
-        const SizedBox(height: 18),
-        ...children
-      ]);
+                    Expanded(child: heading),
+                    ...actions,
+                  ],
+                ),
+              const SizedBox(height: 18),
+              ...children,
+            ],
+          );
+        },
+      );
 }
 
 class ZenEmptyState extends StatelessWidget {

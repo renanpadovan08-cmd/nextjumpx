@@ -286,25 +286,38 @@ class _AgendaScreenState extends State<AgendaScreen> {
           const SizedBox(height: 12),
           ...overdue.map((item) => Padding(
                 padding: const EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: ZenColors.red.withValues(alpha: .15),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Text(item.time,
-                        style: const TextStyle(fontWeight: FontWeight.w900)),
-                  ),
-                  title: Text(item.clientName,
-                      style: const TextStyle(fontWeight: FontWeight.w900)),
-                  subtitle: Text('${item.serviceName} • ${item.barberName}',
-                      style: const TextStyle(color: ZenColors.muted)),
-                  trailing: FilledButton(
-                    onPressed: () => _copyWhats(item, 'confirm'),
-                    child: const Text('Confirmar WhatsApp'),
-                  ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final identity = Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _timeBadge(item.time, alert: true),
+                        const SizedBox(width: 12),
+                        Expanded(child: _appointmentDetails(item)),
+                      ],
+                    );
+                    final action = FilledButton(
+                      onPressed: () => _copyWhats(item, 'confirm'),
+                      child: const Text('Confirmar WhatsApp'),
+                    );
+                    if (constraints.maxWidth < 560) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          identity,
+                          const SizedBox(height: 12),
+                          action,
+                        ],
+                      );
+                    }
+                    return Row(
+                      children: [
+                        Expanded(child: identity),
+                        const SizedBox(width: 12),
+                        action,
+                      ],
+                    );
+                  },
                 ),
               ))
         ],
@@ -427,59 +440,48 @@ class _AgendaScreenState extends State<AgendaScreen> {
         child: ExpansionTile(
           collapsedIconColor: Colors.white,
           iconColor: ZenColors.green,
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: ZenColors.green.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text(item.time,
-                    style: const TextStyle(fontWeight: FontWeight.w900)),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          title: LayoutBuilder(
+            builder: (context, constraints) {
+              final identity = Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _timeBadge(item.time),
+                  const SizedBox(width: 12),
+                  Expanded(child: _appointmentDetails(item)),
+                ],
+              );
+              final status = ZenStatusPill(
+                label: _statusLabel(item.status),
+                color: _statusColor(item.status),
+              );
+              final draggable =
+                  ['agendado', 'encaixe', 'em_andamento'].contains(item.status);
+
+              if (constraints.maxWidth < 520) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(item.clientName,
-                        style: const TextStyle(fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 4),
-                    Text('${item.serviceName} • ${item.barberName}',
-                        style: const TextStyle(color: ZenColors.muted)),
-                  ],
-                ),
-              ),
-              ZenStatusPill(
-                  label: _statusLabel(item.status),
-                  color: _statusColor(item.status)),
-              if (['agendado', 'encaixe', 'em_andamento'].contains(item.status))
-                Draggable<AppointmentDto>(
-                  data: item,
-                  feedback: Material(
-                    color: Colors.transparent,
-                    child: Container(
-                      width: 230,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xff102033),
-                        border: Border.all(color: ZenColors.green),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text('${item.time} • ${item.clientName}'),
+                    identity,
+                    const SizedBox(height: 9),
+                    Row(
+                      children: [
+                        status,
+                        const Spacer(),
+                        if (draggable) _dragHandle(item),
+                      ],
                     ),
-                  ),
-                  childWhenDragging: const Icon(
-                    Icons.drag_indicator,
-                    color: ZenColors.muted,
-                  ),
-                  child: const Padding(
-                    padding: EdgeInsets.only(left: 8),
-                    child: Icon(Icons.drag_indicator),
-                  ),
-                ),
-            ],
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: identity),
+                  const SizedBox(width: 10),
+                  status,
+                  if (draggable) _dragHandle(item),
+                ],
+              );
+            },
           ),
           children: [
             Padding(
@@ -545,6 +547,61 @@ class _AgendaScreenState extends State<AgendaScreen> {
       ),
     );
   }
+
+  Widget _timeBadge(String time, {bool alert = false}) => Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color:
+              (alert ? ZenColors.red : ZenColors.green).withValues(alpha: .15),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          time,
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
+      );
+
+  Widget _appointmentDetails(AppointmentDto item) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            item.clientName,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${item.serviceName} • ${item.barberName}',
+            style: const TextStyle(color: ZenColors.muted),
+          ),
+        ],
+      );
+
+  Widget _dragHandle(AppointmentDto item) => Draggable<AppointmentDto>(
+        data: item,
+        feedback: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: 230,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xff102033),
+              border: Border.all(color: ZenColors.green),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text('${item.time} • ${item.clientName}'),
+          ),
+        ),
+        childWhenDragging: const Icon(
+          Icons.drag_indicator,
+          color: ZenColors.muted,
+        ),
+        child: const Padding(
+          padding: EdgeInsets.only(left: 8),
+          child: Icon(Icons.drag_indicator),
+        ),
+      );
 
   String _money(num value) =>
       'R\$ ${value.toStringAsFixed(2).replaceAll('.', ',')}';

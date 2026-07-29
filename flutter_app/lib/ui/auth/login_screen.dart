@@ -412,6 +412,7 @@ class _LoginScreenState extends State<LoginScreen> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final compact = constraints.maxWidth < 900;
+                  final phone = constraints.maxWidth < 500;
                   final panels = [
                     const _WelcomePanel(),
                     _LoginPanel(
@@ -429,9 +430,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     alignment: Alignment.topCenter,
                     child: SingleChildScrollView(
                       padding: EdgeInsets.fromLTRB(
-                        24,
-                        compact ? 28 : 56,
-                        24,
+                        phone ? 16 : 24,
+                        phone ? 18 : (compact ? 28 : 56),
+                        phone ? 16 : 24,
                         38,
                       ),
                       child: ConstrainedBox(
@@ -473,39 +474,42 @@ class _WelcomePanel extends StatelessWidget {
   const _WelcomePanel();
 
   @override
-  Widget build(BuildContext context) => _ZenPanel(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _ZenBarberBrand(),
-            const SizedBox(height: 25),
-            const Text(
-              'Organize sua barbearia em\num só lugar.',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 29,
-                fontWeight: FontWeight.w900,
-                height: 1.1,
-              ),
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 500;
+    return _ZenPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _ZenBarberBrand(),
+          SizedBox(height: compact ? 20 : 25),
+          Text(
+            'Organize sua barbearia em um só lugar.',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: compact ? 26 : 29,
+              fontWeight: FontWeight.w900,
+              height: 1.1,
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'Agenda, serviços, barbeiros, carteira, link público e\nWhatsApp integrados.',
-              style: TextStyle(
-                color: Color(0xffaab8cc),
-                fontSize: 16,
-                height: 1.3,
-              ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Agenda, serviços, barbeiros, carteira, link público e WhatsApp integrados.',
+            style: TextStyle(
+              color: Color(0xffaab8cc),
+              fontSize: 16,
+              height: 1.3,
             ),
-            const SizedBox(height: 20),
-            const _Feature(text: 'Link para clientes'),
-            const SizedBox(height: 10),
-            const _Feature(text: 'Agenda por barbeiro'),
-            const SizedBox(height: 10),
-            const _Feature(text: 'Bloqueio por duração do serviço'),
-          ],
-        ),
-      );
+          ),
+          const SizedBox(height: 20),
+          const _Feature(text: 'Link para clientes'),
+          const SizedBox(height: 10),
+          const _Feature(text: 'Agenda por barbeiro'),
+          const SizedBox(height: 10),
+          const _Feature(text: 'Bloqueio por duração do serviço'),
+        ],
+      ),
+    );
+  }
 }
 
 class _LoginPanel extends StatelessWidget {
@@ -602,94 +606,110 @@ class _ZenPanel extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Container(
-        constraints: const BoxConstraints(minHeight: 460),
-        padding: const EdgeInsets.all(28),
-        decoration: BoxDecoration(
-          color: const Color(0xee09121f),
-          border: Border.all(color: const Color(0xff263647)),
-          borderRadius: BorderRadius.circular(28),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xf20b1522), Color(0xee060d16)],
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x77000000),
-              blurRadius: 40,
-              offset: Offset(0, 20),
-            ),
-          ],
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 500;
+    return Container(
+      constraints: BoxConstraints(minHeight: compact ? 0 : 460),
+      padding: EdgeInsets.all(compact ? 20 : 28),
+      decoration: BoxDecoration(
+        color: const Color(0xee09121f),
+        border: Border.all(color: const Color(0xff263647)),
+        borderRadius: BorderRadius.circular(compact ? 22 : 28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xf20b1522), Color(0xee060d16)],
         ),
-        child: child,
-      );
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x77000000),
+            blurRadius: 40,
+            offset: Offset(0, 20),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
 }
 
 class _ZenBarberBrand extends StatelessWidget {
   const _ZenBarberBrand();
 
   @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 330;
+          final logoSize = compact ? 46.0 : 54.0;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: Image.asset(
-                  'assets/images/nextjumpx-logo-transparent.png',
-                  width: 54,
-                  height: 54,
-                  fit: BoxFit.cover,
-                ),
+              Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(compact ? 13 : 16),
+                    child: Image.asset(
+                      'assets/images/nextjumpx-logo-transparent.png',
+                      width: logoSize,
+                      height: logoSize,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  SizedBox(width: compact ? 9 : 12),
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'ZENBARBER',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontFamily: 'Georgia',
+                          fontSize: compact ? 23 : 27,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .6,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: compact ? 7 : 10),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                        horizontal: compact ? 8 : 10, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xff4a3512),
+                      border: Border.all(color: const Color(0xffe8c55d)),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: Text(
+                      'PRO',
+                      style: TextStyle(
+                        color: const Color(0xffffd467),
+                        fontSize: compact ? 11 : 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              const Text(
-                'ZENBARBER',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontFamily: 'Georgia',
-                  fontSize: 27,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: .6,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xff4a3512),
-                  border: Border.all(color: const Color(0xffe8c55d)),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: const Text(
-                  'PRO',
+              Padding(
+                padding: EdgeInsets.only(
+                    left: logoSize + (compact ? 9 : 12), top: 2),
+                child: Text(
+                  'Powered by NextJumpX',
                   style: TextStyle(
-                    color: Color(0xffffd467),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
+                    color: Color(0xffd9e4f3),
+                    fontFamily: 'Georgia',
+                    fontSize: compact ? 14 : 16,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
+              const SizedBox(height: 19),
+              const Divider(color: Color(0xff213142), height: 1),
             ],
-          ),
-          const Padding(
-            padding: EdgeInsets.only(left: 66, top: 2),
-            child: Text(
-              'Powered by NextJumpX',
-              style: TextStyle(
-                color: Color(0xffd9e4f3),
-                fontFamily: 'Georgia',
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(height: 19),
-          const Divider(color: Color(0xff213142), height: 1),
-        ],
+          );
+        },
       );
 }
 
@@ -700,8 +720,8 @@ class _Feature extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        height: 48,
-        padding: const EdgeInsets.symmetric(horizontal: 14),
+        constraints: const BoxConstraints(minHeight: 48),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: const Color(0xff0b1728),
           border: Border.all(color: const Color(0xff263c59)),
@@ -712,12 +732,17 @@ class _Feature extends StatelessWidget {
             const Icon(Icons.check_box_rounded,
                 color: Color(0xff36d23b), size: 21),
             const SizedBox(width: 8),
-            Text(
-              text,
-              style: const TextStyle(
-                color: Color(0xffeff4fb),
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+            Expanded(
+              child: Text(
+                text,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: const Color(0xffeff4fb),
+                  fontSize: MediaQuery.sizeOf(context).width < 500 ? 15 : 16,
+                  fontWeight: FontWeight.w600,
+                  height: 1.2,
+                ),
               ),
             ),
           ],

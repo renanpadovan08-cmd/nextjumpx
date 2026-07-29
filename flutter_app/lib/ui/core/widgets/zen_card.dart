@@ -11,11 +11,19 @@ class ZenCard extends StatelessWidget {
   final EdgeInsets padding;
   final VoidCallback? onTap;
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) {
+    final effectivePadding = MediaQuery.sizeOf(context).width < 600 &&
+            padding == const EdgeInsets.all(18)
+        ? const EdgeInsets.all(14)
+        : padding;
+    return Card(
       child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(24),
-          child: Padding(padding: padding, child: child)));
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Padding(padding: effectivePadding, child: child),
+      ),
+    );
+  }
 }
 
 class ZenStatusPill extends StatelessWidget {
@@ -46,7 +54,7 @@ class ZenMetricCard extends StatelessWidget {
   final Color color;
   @override
   Widget build(BuildContext c) => SizedBox(
-      width: 210,
+      width: MediaQuery.sizeOf(c).width < 600 ? double.infinity : 210,
       child: ZenCard(
           child: Row(children: [
         Container(

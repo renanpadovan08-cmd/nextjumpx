@@ -91,24 +91,8 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
                   ),
                   children: [
                     for (final payment in (contract['payments'] as List? ?? []))
-                      ListTile(
-                        title: Text(
-                          '${isoToBrazilianDate('${payment['date']}')} · R\$ ${((payment['services']?['price'] as num?) ?? 0).toStringAsFixed(2)}',
-                        ),
-                        trailing: ['concluido', 'finalizado']
-                                .contains(payment['status'])
-                            ? const ZenStatusPill(
-                                label: 'Pago', color: ZenColors.green)
-                            : payment['status'] == 'bonificado'
-                                ? const ZenStatusPill(
-                                    label: 'Bonificado',
-                                    color: ZenColors.muted,
-                                  )
-                                : FilledButton(
-                                    onPressed: () => widget.viewModel
-                                        .pay('${payment['id']}'),
-                                    child: const Text('Receber'),
-                                  ),
+                      _paymentTile(
+                        Map<String, dynamic>.from(payment as Map),
                       ),
                     Padding(
                       padding: const EdgeInsets.all(12),
@@ -140,6 +124,49 @@ class _FixedClientsScreenState extends State<FixedClientsScreen> {
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _paymentTile(Map<String, dynamic> payment) {
+    final title = Text(
+      '${isoToBrazilianDate('${payment['date']}')} · R\$ ${((payment['services']?['price'] as num?) ?? 0).toStringAsFixed(2)}',
+    );
+    final Widget control;
+    if (['concluido', 'finalizado'].contains(payment['status'])) {
+      control = const ZenStatusPill(label: 'Pago', color: ZenColors.green);
+    } else if (payment['status'] == 'bonificado') {
+      control =
+          const ZenStatusPill(label: 'Bonificado', color: ZenColors.muted);
+    } else {
+      control = FilledButton(
+        onPressed: () => widget.viewModel.pay('${payment['id']}'),
+        child: const Text('Receber'),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 420) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                title,
+                const SizedBox(height: 8),
+                Align(alignment: Alignment.centerRight, child: control),
+              ],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: title),
+              const SizedBox(width: 10),
+              control,
+            ],
+          );
+        },
       ),
     );
   }

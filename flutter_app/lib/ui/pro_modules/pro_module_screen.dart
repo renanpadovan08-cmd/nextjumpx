@@ -645,17 +645,14 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
         margin: const EdgeInsets.only(top: 10),
         padding: const EdgeInsets.all(14),
         decoration: _inset(),
-        child: Row(
-          children: [
-            Expanded(
-              child: _walletText(
-                '${row['client_name'] ?? 'Cliente'}',
-                '${row['statusLabel'] ?? ''} • Último atendimento há ${row['daysAway'] ?? 0} dias • ${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''}',
-                '${row['visits'] ?? 0} visita(s) • Média ${_money(row['averageSpend'])} • Total ${_money(row['totalSpend'])}',
-              ),
-            ),
-            const SizedBox(width: 10),
-            Wrap(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final details = _walletText(
+              '${row['client_name'] ?? 'Cliente'}',
+              '${row['statusLabel'] ?? ''} • Último atendimento há ${row['daysAway'] ?? 0} dias • ${row['services']?['name'] ?? 'Serviço'} • ${row['barbers']?['name'] ?? ''}',
+              '${row['visits'] ?? 0} visita(s) • Média ${_money(row['averageSpend'])} • Total ${_money(row['totalSpend'])}',
+            );
+            final actions = Wrap(
               spacing: 7,
               runSpacing: 7,
               children: [
@@ -668,8 +665,25 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                 }, green: true),
                 _action('Histórico', () => _showRetentionHistory(row)),
               ],
-            ),
-          ],
+            );
+            if (constraints.maxWidth < 700) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  details,
+                  const SizedBox(height: 12),
+                  actions,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: details),
+                const SizedBox(width: 10),
+                actions,
+              ],
+            );
+          },
         ),
       );
 

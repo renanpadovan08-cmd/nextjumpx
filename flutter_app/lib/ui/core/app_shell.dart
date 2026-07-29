@@ -303,7 +303,11 @@ class _AppShellState extends State<AppShell> {
         child: SafeArea(child: _sidebar()),
       ),
       appBar: AppBar(
-        title: Text('$_title · ${widget.app.user!.shopName}'),
+        title: Text(
+          '$_title · ${widget.app.user!.shopName}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         actions: [
           IconButton(
               onPressed: widget.app.logout, icon: const Icon(Icons.logout)),
@@ -311,6 +315,9 @@ class _AppShellState extends State<AppShell> {
       ),
       body: IndexedStack(index: index, children: screens),
       bottomNavigationBar: NavigationBar(
+        labelBehavior: MediaQuery.sizeOf(context).width < 390
+            ? NavigationDestinationLabelBehavior.onlyShowSelected
+            : NavigationDestinationLabelBehavior.alwaysShow,
         selectedIndex: selected < 0 ? 0 : selected,
         onDestinationSelected: (destination) => _navigate(targets[destination]),
         destinations: [
