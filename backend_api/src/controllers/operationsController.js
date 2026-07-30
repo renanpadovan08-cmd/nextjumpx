@@ -16,6 +16,11 @@ import {
   issueCashToken,
 } from '../services/cashPasswordPolicy.js';
 import {
+  cashAuditCsv,
+  cashAuditSummary,
+  nextMonthOccurrence,
+} from '../services/cashAuditPolicy.js';
+import {
   businessNow,
   intervalsOverlap,
   scheduleForDate,
@@ -392,9 +397,151 @@ export async function cash(req, res) {
   res.json(await cashSummary(req, month));
 }
 
+function scopeCashBuilder(req, builder) {
+  builder = req.user.shopId
+    ? builder.eq('shop_id', req.user.shopId)
+    : builder.eq('shop_name', req.user.shopName);
+  const unitId = selectedUnitId(req);
+  return unitId ? builder.eq('unit_id', unitId) : builder;
+}
+
+async function optionalCashRows(builder) {
+  const { data, error } = await builder;
+  if (error?.code === '42P01') return [];
+  if (error) throw new HttpError(400, error.message);
+  return data || [];
+}
+
+async function ensureCashAuditAvailable() {
+  const { error } = await supabase.from('cash_audit_logs')
+    .select('id')
+    .limit(1);
+  if (error?.code === '42P01') {
+    throw new HttpError(
+      409,
+      'Execute a migração de auditoria do caixa antes desta operação',
+    );
+  }
+  if (error) throw new HttpError(400, error.message);
+}
+
+function cashSnapshot(entry) {
+  return {
+    id: entry.id || null,
+    type: entry.type || '',
+    description: entry.description || '',
+    amount: Number(entry.amount || 0),
+    reason: entry.reason || '',
+    source: entry.source || '',
+    recurring_entry_id: entry.recurring_entry_id || null,
+  };
+}
+
+async function recordCashAudit(req, {
+  movementId = null,
+  recurringEntryId = null,
+  unitId = selectedUnitId(req),
+  action,
+  before = {},
+  after = {},
+  reason = '',
+}) {
+  const row = {
+    shop_id: req.user.shopId || null,
+    shop_name: req.user.shopName,
+    ...(unitId ? { unit_id: unitId } : {}),
+    movement_id: movementId,
+    recurring_entry_id: recurringEntryId,
+    action,
+    summary: cashAuditSummary({
+      action,
+      actorName: req.user.name,
+      before,
+      after,
+    }),
+    old_data: before,
+    new_data: after,
+    reason: String(reason || '').trim(),
+    actor_id: req.user.id,
+    actor_name: req.user.name || req.user.login || 'Usuário',
+    actor_role: req.user.role || '',
+  };
+  const { data, error } = await supabase.from('cash_audit_logs')
+    .insert(row)
+    .select()
+    .single();
+  if (error?.code === '42P01') {
+    throw new HttpError(
+      409,
+      'Execute a migração de auditoria do caixa antes de alterar lançamentos',
+    );
+  }
+  if (error) throw new HttpError(400, error.message);
+  return data;
+}
+
+async function cashAuditRows(req, { from, to, limit = 200 } = {}) {
+  let builder = supabase.from('cash_audit_logs').select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  builder = scopeCashBuilder(req, builder);
+  if (from) builder = builder.gte('created_at', `${from}T00:00:00-03:00`);
+  if (to) builder = builder.lt('created_at', `${to}T00:00:00-03:00`);
+  return optionalCashRows(builder);
+}
+
+async function cashRecurringRows(req, { dueOnly = false } = {}) {
+  let builder = supabase.from('cash_recurring_entries').select('*')
+    .eq('active', true)
+    .order('next_run_date');
+  builder = scopeCashBuilder(req, builder);
+  if (dueOnly) builder = builder.lte('next_run_date', today());
+  return optionalCashRows(builder);
+}
+
+async function materializeRecurringCashEntries(req) {
+  const recurrences = await cashRecurringRows(req, { dueOnly: true });
+  for (const recurrence of recurrences) {
+    let dueDate = String(recurrence.next_run_date || '');
+    let generated = 0;
+    while (dueDate && dueDate <= today() && generated < 36) {
+      const recurringMonth = dueDate.slice(0, 7);
+      const movement = {
+        shop_id: recurrence.shop_id || null,
+        shop_name: recurrence.shop_name,
+        ...(recurrence.unit_id ? { unit_id: recurrence.unit_id } : {}),
+        type: recurrence.type,
+        source: 'recurring',
+        description: recurrence.description,
+        amount: recurrence.amount,
+        reason: recurrence.reason || 'Lançamento recorrente mensal',
+        recurring_entry_id: recurrence.id,
+        recurring_month: recurringMonth,
+        created_by: recurrence.created_by,
+        created_by_name: recurrence.created_by_name || 'Recorrência automática',
+        created_at: `${dueDate}T12:00:00-03:00`,
+      };
+      const { error } = await supabase.from('cash_movements').insert(movement);
+      if (error && error.code !== '23505') {
+        throw new HttpError(400, error.message);
+      }
+      dueDate = nextMonthOccurrence(dueDate, recurrence.day_of_month);
+      generated += 1;
+    }
+    if (generated) {
+      await query(supabase.from('cash_recurring_entries').update({
+        next_run_date: dueDate,
+        last_generated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq('id', recurrence.id));
+    }
+  }
+}
+
 async function cashSummary(req, month) {
   const { user } = req;
   if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, 'Mes invalido; use AAAA-MM');
+  await materializeRecurringCashEntries(req);
   const rows = await scopedAppointments(req, {
     filter: (builder) => builder.in(
       'status',
@@ -445,6 +592,10 @@ async function cashSummary(req, month) {
     : closureBuilder.eq('shop_name', user.shopName);
   if (unitId) closureBuilder = closureBuilder.eq('unit_id', unitId);
   const closures = await query(closureBuilder);
+  const [audits, recurrences] = await Promise.all([
+    cashAuditRows(req, { from: addDaysIso(today(), -30) }),
+    cashRecurringRows(req),
+  ]);
   const entries = receiptTotal + manualIn;
   return {
     month,
@@ -456,6 +607,8 @@ async function cashSummary(req, month) {
     receipts,
     manual,
     adjustments: openMovements.filter((item) => item.type === 'ajuste'),
+    audits,
+    recurrences,
     closures,
     openMovementIds: openMovements.map((item) => item.id),
   };
@@ -496,7 +649,14 @@ export async function unlockCash(req, res) {
 }
 
 export async function createCashEntry(req, res) {
-  const { description, amount, type, reason = '' } = req.body;
+  const {
+    description,
+    amount,
+    type,
+    reason = '',
+    recurring = false,
+    recurringDay,
+  } = req.body;
   const parsedAmount = parseDecimal(amount);
   if (!String(description || '').trim()
       || !Number.isFinite(parsedAmount)
@@ -506,25 +666,84 @@ export async function createCashEntry(req, res) {
   if (!['entrada', 'saida'].includes(type)) {
     throw new HttpError(400, 'Tipo de lancamento invalido');
   }
-  res.status(201).json(await query(supabase.from('cash_movements').insert({
+  const isRecurring = recurring === true || recurring === 'true';
+  const dayOfMonth = Number(recurringDay);
+  if (isRecurring
+      && (type !== 'saida'
+        || !Number.isInteger(dayOfMonth)
+        || dayOfMonth < 1
+        || dayOfMonth > 31)) {
+    throw new HttpError(
+      400,
+      'Despesa recorrente exige um dia mensal entre 1 e 31',
+    );
+  }
+  let recurringEntry = null;
+  if (isRecurring) {
+    await ensureCashAuditAvailable();
+    const { data, error } = await supabase.from('cash_recurring_entries').insert({
+      shop_id: req.user.shopId || null,
+      shop_name: req.user.shopName,
+      ...(selectedUnitId(req) ? { unit_id: selectedUnitId(req) } : {}),
+      description: String(description).trim(),
+      amount: parsedAmount,
+      type,
+      reason: String(reason || '').trim(),
+      day_of_month: dayOfMonth,
+      next_run_date: nextMonthOccurrence(today(), dayOfMonth),
+      created_by: req.user.id,
+      created_by_name: req.user.name || '',
+    }).select().single();
+    if (error?.code === '42P01') {
+      throw new HttpError(
+        409,
+        'Execute a migração de auditoria para habilitar despesas recorrentes',
+      );
+    }
+    if (error) throw new HttpError(400, error.message);
+    recurringEntry = data;
+  }
+  const created = await query(supabase.from('cash_movements').insert({
     shop_id: req.user.shopId || null,
     shop_name: req.user.shopName,
     ...(selectedUnitId(req) ? { unit_id: selectedUnitId(req) } : {}),
     type,
-    source: 'manual',
+    source: isRecurring ? 'recurring' : 'manual',
     description: String(description).trim(),
     amount: parsedAmount,
     reason: String(reason || '').trim(),
+    ...(recurringEntry ? {
+      recurring_entry_id: recurringEntry.id,
+      recurring_month: today().slice(0, 7),
+    } : {}),
     created_by: req.user.id,
     created_by_name: req.user.name || '',
-  }).select().single()));
+  }).select().single());
+  if (recurringEntry) {
+    try {
+      await recordCashAudit(req, {
+        movementId: created.id,
+        recurringEntryId: recurringEntry.id,
+        action: 'recorrencia_criada',
+        after: cashSnapshot(created),
+        reason: String(reason || '').trim(),
+      });
+    } catch (error) {
+      await query(supabase.from('cash_movements').delete().eq('id', created.id));
+      await query(supabase.from('cash_recurring_entries')
+        .delete()
+        .eq('id', recurringEntry.id));
+      throw error;
+    }
+  }
+  res.status(201).json(created);
 }
 
-export async function deleteCashEntry(req, res) {
+async function ownedCashEntry(req, id) {
   const entry = await one(
     supabase.from('cash_movements')
       .select('*')
-      .eq('id', req.params.id),
+      .eq('id', id),
     'Lancamento nao encontrado',
   );
   if (!isAdminRole(req.user.role) && !sameShop(req.user, entry)) {
@@ -534,16 +753,151 @@ export async function deleteCashEntry(req, res) {
       && String(entry.unit_id || '') !== selectedUnitId(req)) {
     throw new HttpError(403, 'Lancamento fora da unidade selecionada');
   }
-  if (entry.source !== 'manual') {
-    throw new HttpError(409, 'Somente lancamentos manuais podem ser cancelados');
+  return entry;
+}
+
+export async function updateCashEntry(req, res) {
+  await ensureCashAuditAvailable();
+  const entry = await ownedCashEntry(req, req.params.id);
+  if (!['manual', 'recurring'].includes(entry.source) || entry.closed_at) {
+    throw new HttpError(409, 'Somente lançamentos abertos podem ser alterados');
   }
+  const description = String(req.body.description || '').trim();
+  const amount = parseDecimal(req.body.amount);
+  const type = String(req.body.type || '');
+  const note = String(req.body.note ?? entry.reason ?? '').trim();
+  const changeReason = String(req.body.changeReason || '').trim();
+  if (!description || !Number.isFinite(amount) || amount <= 0) {
+    throw new HttpError(400, 'Informe descrição e valor positivo');
+  }
+  if (!['entrada', 'saida'].includes(type)) {
+    throw new HttpError(400, 'Tipo de lançamento inválido');
+  }
+  if (!changeReason) {
+    throw new HttpError(400, 'Informe o motivo da alteração');
+  }
+  const before = cashSnapshot(entry);
+  const updated = await query(supabase.from('cash_movements').update({
+    description,
+    amount,
+    type,
+    reason: note,
+    updated_at: new Date().toISOString(),
+  }).eq('id', entry.id).select().single());
+  try {
+    await recordCashAudit(req, {
+      movementId: entry.id,
+      recurringEntryId: entry.recurring_entry_id,
+      unitId: entry.unit_id,
+      action: 'alteracao',
+      before,
+      after: cashSnapshot(updated),
+      reason: changeReason,
+    });
+  } catch (error) {
+    await query(supabase.from('cash_movements').update({
+      description: entry.description,
+      amount: entry.amount,
+      type: entry.type,
+      reason: entry.reason,
+      updated_at: entry.updated_at,
+    }).eq('id', entry.id));
+    throw error;
+  }
+  res.json(updated);
+}
+
+export async function deleteCashEntry(req, res) {
+  await ensureCashAuditAvailable();
+  const entry = await ownedCashEntry(req, req.params.id);
+  if (!['manual', 'recurring'].includes(entry.source) || entry.closed_at) {
+    throw new HttpError(409, 'Somente lançamentos abertos podem ser cancelados');
+  }
+  const deletionReason = String(
+    req.body?.reason || 'Lançamento cancelado pelo usuário',
+  ).trim();
   await query(supabase.from('cash_movements').update({
     source: 'manual_cancelado',
     old_amount: entry.amount,
     new_amount: 0,
-    reason: 'Lancamento cancelado pelo usuario',
+    reason: deletionReason,
+    updated_at: new Date().toISOString(),
   }).eq('id', entry.id));
+  try {
+    await recordCashAudit(req, {
+      movementId: entry.id,
+      recurringEntryId: entry.recurring_entry_id,
+      unitId: entry.unit_id,
+      action: 'exclusao',
+      before: cashSnapshot(entry),
+      reason: deletionReason,
+    });
+  } catch (error) {
+    await query(supabase.from('cash_movements').update({
+      source: entry.source,
+      old_amount: entry.old_amount,
+      new_amount: entry.new_amount,
+      reason: entry.reason,
+      updated_at: entry.updated_at,
+    }).eq('id', entry.id));
+    throw error;
+  }
   res.status(204).end();
+}
+
+export async function disableCashRecurrence(req, res) {
+  await ensureCashAuditAvailable();
+  let builder = supabase.from('cash_recurring_entries').select('*')
+    .eq('id', req.params.id)
+    .limit(1);
+  builder = scopeCashBuilder(req, builder);
+  const rows = await optionalCashRows(builder);
+  const recurrence = rows[0];
+  if (!recurrence) throw new HttpError(404, 'Recorrência não encontrada');
+  const reason = String(req.body?.reason || '').trim();
+  if (!reason) throw new HttpError(400, 'Informe o motivo da desativação');
+  const updated = await query(supabase.from('cash_recurring_entries').update({
+    active: false,
+    updated_at: new Date().toISOString(),
+  }).eq('id', recurrence.id).select().single());
+  try {
+    await recordCashAudit(req, {
+      recurringEntryId: recurrence.id,
+      unitId: recurrence.unit_id,
+      action: 'recorrencia_desativada',
+      before: cashSnapshot(recurrence),
+      after: cashSnapshot(updated),
+      reason,
+    });
+  } catch (error) {
+    await query(supabase.from('cash_recurring_entries').update({
+      active: true,
+      updated_at: recurrence.updated_at,
+    }).eq('id', recurrence.id));
+    throw error;
+  }
+  res.json(updated);
+}
+
+export async function cashAuditReport(req, res) {
+  const month = String(req.query.month || today().slice(0, 7));
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    throw new HttpError(400, 'Mês inválido; use AAAA-MM');
+  }
+  const nextMonth = nextMonthOccurrence(`${month}-01`, 1).slice(0, 7);
+  await ensureCashAuditAvailable();
+  let builder = supabase.from('cash_audit_logs').select('*')
+    .gte('created_at', `${month}-01T00:00:00-03:00`)
+    .lt('created_at', `${nextMonth}-01T00:00:00-03:00`)
+    .order('created_at', { ascending: false });
+  builder = scopeCashBuilder(req, builder);
+  const rows = await queryAll(builder, { maxRows: 20000 });
+  res.json({
+    month,
+    fileName: `auditoria-caixa-${month}.csv`,
+    total: rows.length,
+    csv: cashAuditCsv(rows),
+  });
 }
 
 export async function createCashClosure(req, res) {
@@ -634,6 +988,7 @@ export async function createCashClosure(req, res) {
 }
 
 export async function updateCashReceipt(req, res) {
+  await ensureCashAuditAvailable();
   const current = await ownedAppointment(req, req.params.id);
   if (!paidStatuses.includes(current.status)) {
     throw new HttpError(409, 'Somente recebimentos concluidos podem ser alterados');
@@ -654,7 +1009,7 @@ export async function updateCashReceipt(req, res) {
       .select('*,services(name,price,duration),barbers(name)')
       .single(),
   );
-  await query(supabase.from('cash_movements').insert({
+  const auditMovement = await query(supabase.from('cash_movements').insert({
     shop_id: req.user.shopId || null,
     shop_name: req.user.shopName,
     ...(selectedUnitId(req) ? { unit_id: selectedUnitId(req) } : {}),
@@ -670,7 +1025,37 @@ export async function updateCashReceipt(req, res) {
     reason,
     created_by: req.user.id,
     created_by_name: req.user.name || '',
-  }));
+  }).select().single());
+  try {
+    await recordCashAudit(req, {
+      movementId: auditMovement.id,
+      action: 'alteracao',
+      before: {
+        id: current.id,
+        type: 'entrada',
+        description: `${current.client_name || 'Recebimento'} • ${current.services?.name || ''}`,
+        amount: oldAmount,
+        source: 'appointment',
+      },
+      after: {
+        id: current.id,
+        type: 'entrada',
+        description: `${current.client_name || 'Recebimento'} • ${current.services?.name || ''}`,
+        amount,
+        source: 'appointment',
+      },
+      reason,
+    });
+  } catch (error) {
+    await query(supabase.from('cash_movements')
+      .delete()
+      .eq('id', auditMovement.id));
+    await query(supabase.from('appointments').update({
+      received_amount: current.received_amount,
+      payment_note: current.payment_note,
+    }).eq('id', current.id));
+    throw error;
+  }
   res.json(updated);
 }
 

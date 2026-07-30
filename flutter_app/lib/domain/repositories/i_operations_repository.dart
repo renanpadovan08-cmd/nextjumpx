@@ -8,7 +8,10 @@ abstract interface class IOperationsRepository {
   Future<dynamic> createUnit(Map<String, dynamic> body);
   Future<dynamic> assignBarberUnit(String barberId, String? unitId);
   Future<dynamic> createCashEntry(Map<String, dynamic> body);
-  Future<void> deleteCashEntry(String id);
+  Future<dynamic> updateCashEntry(String id, Map<String, dynamic> body);
+  Future<void> deleteCashEntry(String id, String reason);
+  Future<dynamic> disableCashRecurrence(String id, String reason);
+  Future<Map<String, dynamic>> cashAuditReport(String month);
   Future<dynamic> createCashClosure(Map<String, dynamic> body);
   Future<dynamic> updateCashReceipt(String id, Map<String, dynamic> body);
   Future<Map<String, dynamic>> cashAccess();

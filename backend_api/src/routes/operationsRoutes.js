@@ -17,7 +17,11 @@ router.get('/operations/cash/access', requireRoles('admin', 'gerente', 'manager'
 router.post('/operations/cash/unlock', requireRoles('admin', 'gerente', 'manager', 'owner'), asyncHandler(controller.unlockCash));
 router.get('/operations/cash', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.cash));
 router.post('/operations/cash/entries', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.createCashEntry));
+router.patch('/operations/cash/entries/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.updateCashEntry));
+router.post('/operations/cash/entries/:id/cancel', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.deleteCashEntry));
 router.delete('/operations/cash/entries/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.deleteCashEntry));
+router.post('/operations/cash/recurrences/:id/disable', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.disableCashRecurrence));
+router.get('/operations/cash/audit-report', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.cashAuditReport));
 router.post('/operations/cash/closures', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.createCashClosure));
 router.patch('/operations/cash/receipts/:id', requireRoles('admin', 'gerente', 'manager', 'owner'), requireCashUnlock, asyncHandler(controller.updateCashReceipt));
 router.get('/operations/profile', asyncHandler(controller.profile));

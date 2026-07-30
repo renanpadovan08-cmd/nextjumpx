@@ -12,6 +12,7 @@ class ProModuleViewModel extends ChangeNotifier {
   bool uploading = false;
   String? error;
   String lastCashCsv = '';
+  String lastCashAuditCsv = '';
   bool cashConfigured = false;
   bool cashUnlocked = false;
   bool loadingMore = false;
@@ -296,10 +297,48 @@ class ProModuleViewModel extends ChangeNotifier {
     }
   }
 
-  Future<bool> deleteCashEntry(String id) async {
+  Future<bool> updateCashEntry(String id, Map<String, dynamic> body) async {
     try {
-      await _repository.deleteCashEntry(id);
+      await _repository.updateCashEntry(id, body);
       await load(ProModule.cash);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> deleteCashEntry(String id, String reason) async {
+    try {
+      await _repository.deleteCashEntry(id, reason);
+      await load(ProModule.cash);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> disableCashRecurrence(String id, String reason) async {
+    try {
+      await _repository.disableCashRecurrence(id, reason);
+      await load(ProModule.cash);
+      return true;
+    } catch (exception) {
+      error = '$exception';
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> generateCashAuditReport(String month) async {
+    try {
+      final result = await _repository.cashAuditReport(month);
+      lastCashAuditCsv = '${result['csv'] ?? ''}';
+      error = null;
+      notifyListeners();
       return true;
     } catch (exception) {
       error = '$exception';

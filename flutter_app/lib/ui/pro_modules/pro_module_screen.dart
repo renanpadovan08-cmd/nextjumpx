@@ -232,6 +232,14 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
   String _money(dynamic value) =>
       'R\$ ${(parseDecimalValue(value) ?? 0).toStringAsFixed(2).replaceAll('.', ',')}';
 
+  String _dateTimeBrazil(dynamic value) {
+    final parsed = DateTime.tryParse('${value ?? ''}')?.toLocal();
+    if (parsed == null) return '${value ?? ''}';
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${two(parsed.day)}/${two(parsed.month)}/${parsed.year} '
+        '${two(parsed.hour)}:${two(parsed.minute)}';
+  }
+
   String get _cashSessionKey {
     final shop =
         widget.shopName.isEmpty ? widget.bookingLogin : widget.shopName;
@@ -1031,7 +1039,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
             _metric('Saldo', _money(_object['balance']), ZenColors.sky),
             _metric(
               'Alterações',
-              '${((_object['adjustments'] as List?) ?? const []).length}',
+              '${((_object['audits'] as List?) ?? const []).length}',
               ZenColors.gold,
             ),
           ]),
@@ -1054,6 +1062,16 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           ...List<Map<String, dynamic>>.from(
                   (_object['manual'] as List?) ?? const [])
               .map(_cashEntry),
+          if (((_object['recurrences'] as List?) ?? const []).isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Text(
+              'Despesas recorrentes ativas',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+            ),
+            ...List<Map<String, dynamic>>.from(
+              (_object['recurrences'] as List?) ?? const [],
+            ).map(_cashRecurrence),
+          ],
           if (((_object['adjustments'] as List?) ?? const []).isNotEmpty) ...[
             const SizedBox(height: 18),
             const Text(
@@ -1072,6 +1090,21 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                 subtitle: Text('${entry['reason'] ?? ''}'),
               ),
             ),
+          ],
+          if (((_object['audits'] as List?) ?? const []).isNotEmpty) ...[
+            const SizedBox(height: 18),
+            const Text(
+              'Histórico de segurança • últimos 30 dias',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Alterações e exclusões são permanentes e identificam o perfil responsável.',
+              style: TextStyle(color: ZenColors.muted),
+            ),
+            ...List<Map<String, dynamic>>.from(
+              (_object['audits'] as List?) ?? const [],
+            ).map(_cashAudit),
           ],
           if (((_object['closures'] as List?) ?? const []).isNotEmpty) ...[
             const SizedBox(height: 18),
@@ -1096,6 +1129,8 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
             children: [
               _action('Bloquear tela', _lockCash),
               _action('Fechar caixa', _closeCash),
+              _action('Relatório mensal de alterações', _cashAuditReport,
+                  gold: true),
               _action('Adicionar lançamento', _createCashDialog, green: true),
             ],
           ),
@@ -1174,45 +1209,291 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
             Expanded(
               child: _walletText(
                 '${entry['type'] == 'entrada' ? 'Entrada' : 'Saída'} • ${entry['description'] ?? ''}',
-                '${entry['entry_date'] ?? ''}',
+                isoToBrazilianDate('${entry['entry_date'] ?? ''}'),
                 _money(entry['amount']),
                 amountColor:
                     entry['type'] == 'saida' ? ZenColors.red : ZenColors.green,
               ),
             ),
-            if (entry['source'] == 'manual')
+            if (['manual', 'recurring'].contains(entry['source'])) ...[
               IconButton(
-                onPressed: () => _deleteCashEntry('${entry['id']}'),
+                onPressed: () => _editCashEntry(entry),
+                icon: const Icon(Icons.edit_outlined, color: ZenColors.gold),
+                tooltip: 'Alterar lançamento',
+              ),
+              IconButton(
+                onPressed: () => _deleteCashEntry(entry),
                 icon: const Icon(Icons.delete_outline, color: ZenColors.red),
                 tooltip: 'Cancelar lançamento',
               ),
+            ],
           ],
         ),
       );
 
-  Future<void> _deleteCashEntry(String id) async {
-    final confirmed = await showDialog<bool>(
+  Widget _cashRecurrence(Map<String, dynamic> recurrence) => ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.event_repeat, color: ZenColors.gold),
+        title: Text(
+          '${recurrence['description'] ?? 'Despesa'} • ${_money(recurrence['amount'])}',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: Text(
+          'Débito mensal no dia ${recurrence['day_of_month']} • próxima cobrança '
+          '${isoToBrazilianDate('${recurrence['next_run_date']}')}',
+        ),
+        trailing: IconButton(
+          onPressed: () => _disableCashRecurrence(recurrence),
+          icon: const Icon(Icons.event_busy, color: ZenColors.red),
+          tooltip: 'Desativar recorrência',
+        ),
+      );
+
+  Widget _cashAudit(Map<String, dynamic> audit) => ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Icon(
+          audit['action'] == 'exclusao'
+              ? Icons.delete_forever_outlined
+              : Icons.history,
+          color: audit['action'] == 'exclusao' ? ZenColors.red : ZenColors.gold,
+        ),
+        title: Text('${audit['summary'] ?? 'Operação de caixa'}'),
+        subtitle: Text(
+          '${_dateTimeBrazil(audit['created_at'])} • '
+          '${audit['actor_name'] ?? 'Usuário'} (${audit['actor_role'] ?? 'perfil'})'
+          '${'${audit['reason'] ?? ''}'.trim().isEmpty ? '' : '\nMotivo: ${audit['reason']}'}',
+        ),
+      );
+
+  Future<void> _editCashEntry(Map<String, dynamic> entry) async {
+    final description =
+        TextEditingController(text: '${entry['description'] ?? ''}');
+    final amount = TextEditingController(
+      text: (parseDecimalValue(entry['amount']) ?? 0)
+          .toStringAsFixed(2)
+          .replaceAll('.', ','),
+    );
+    final note = TextEditingController(text: '${entry['reason'] ?? ''}');
+    final changeReason = TextEditingController();
+    var type = '${entry['type'] ?? 'saida'}';
+    final data = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Alterar lançamento'),
+        content: StatefulBuilder(
+          builder: (context, setDialog) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: description,
+                  decoration: const InputDecoration(labelText: 'Descrição'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: amount,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Valor'),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: type,
+                  items: const [
+                    DropdownMenuItem(value: 'entrada', child: Text('Entrada')),
+                    DropdownMenuItem(value: 'saida', child: Text('Saída')),
+                  ],
+                  onChanged: (value) => setDialog(() => type = value ?? type),
+                  decoration: const InputDecoration(labelText: 'Tipo'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: note,
+                  decoration:
+                      const InputDecoration(labelText: 'Observação opcional'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: changeReason,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: 'Motivo da alteração (obrigatório)',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, {
+              'description': description.text.trim(),
+              'amount': parseDecimalValue(amount.text),
+              'type': type,
+              'note': note.text.trim(),
+              'changeReason': changeReason.text.trim(),
+            }),
+            child: const Text('Salvar alteração'),
+          ),
+        ],
+      ),
+    );
+    description.dispose();
+    amount.dispose();
+    note.dispose();
+    changeReason.dispose();
+    if (data == null) return;
+    if ('${data['description'] ?? ''}'.isEmpty ||
+        data['amount'] == null ||
+        (data['amount'] as num) <= 0 ||
+        '${data['changeReason'] ?? ''}'.isEmpty) {
+      if (mounted) {
+        _message('Preencha descrição, valor e motivo da alteração.');
+      }
+      return;
+    }
+    final ok = await widget.viewModel.updateCashEntry('${entry['id']}', data);
+    if (mounted) {
+      _message(ok
+          ? 'Lançamento alterado e registrado na auditoria.'
+          : widget.viewModel.error ?? 'Não foi possível alterar o lançamento.');
+    }
+  }
+
+  Future<void> _deleteCashEntry(Map<String, dynamic> entry) async {
+    final reason = TextEditingController();
+    final deletionReason = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Cancelar lançamento?'),
-        content: const Text(
-            'O lançamento será preservado no histórico de auditoria e retirado do saldo.'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'O lançamento será preservado no histórico de segurança, com seu perfil, data e hora.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reason,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Motivo da exclusão (obrigatório)',
+              ),
+            ),
+          ],
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(context),
               child: const Text('Cancelar')),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(context, reason.text.trim()),
               child: const Text('Cancelar lançamento')),
         ],
       ),
     );
-    if (confirmed != true) return;
-    final ok = await widget.viewModel.deleteCashEntry(id);
+    reason.dispose();
+    if (deletionReason == null) return;
+    if (deletionReason.isEmpty) {
+      if (mounted) _message('Informe o motivo da exclusão.');
+      return;
+    }
+    final ok = await widget.viewModel
+        .deleteCashEntry('${entry['id']}', deletionReason);
     if (mounted) {
       _message(ok
-          ? 'Lançamento cancelado.'
-          : 'Não foi possível cancelar o lançamento.');
+          ? 'Lançamento cancelado e registrado na auditoria.'
+          : widget.viewModel.error ??
+              'Não foi possível cancelar o lançamento.');
+    }
+  }
+
+  Future<void> _disableCashRecurrence(Map<String, dynamic> recurrence) async {
+    final reason = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Desativar despesa recorrente?'),
+        content: TextField(
+          controller: reason,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Motivo da desativação (obrigatório)',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Voltar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, reason.text.trim()),
+            child: const Text('Desativar'),
+          ),
+        ],
+      ),
+    );
+    reason.dispose();
+    if (value == null) return;
+    if (value.isEmpty) {
+      if (mounted) _message('Informe o motivo da desativação.');
+      return;
+    }
+    final ok = await widget.viewModel
+        .disableCashRecurrence('${recurrence['id']}', value);
+    if (mounted) {
+      _message(ok
+          ? 'Recorrência desativada e registrada na auditoria.'
+          : widget.viewModel.error ?? 'Não foi possível desativar.');
+    }
+  }
+
+  Future<void> _cashAuditReport() async {
+    final controller = TextEditingController(text: '${_object['month'] ?? ''}');
+    final month = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Relatório mensal de alterações'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.datetime,
+          decoration: const InputDecoration(
+            labelText: 'Mês (AAAA-MM)',
+            hintText: '2026-07',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Gerar CSV'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (month == null) return;
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(month)) {
+      if (mounted) _message('Informe o mês no formato AAAA-MM.');
+      return;
+    }
+    final ok = await widget.viewModel.generateCashAuditReport(month);
+    if (ok && widget.viewModel.lastCashAuditCsv.isNotEmpty) {
+      await Clipboard.setData(
+        ClipboardData(text: widget.viewModel.lastCashAuditCsv),
+      );
+    }
+    if (mounted) {
+      _message(ok
+          ? 'Relatório mensal de alterações copiado em CSV.'
+          : widget.viewModel.error ?? 'Não foi possível gerar o relatório.');
     }
   }
 
@@ -1312,66 +1593,105 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     final description = TextEditingController();
     final amount = TextEditingController();
     final reason = TextEditingController();
+    final recurringDay = TextEditingController(text: '${DateTime.now().day}');
     var type = 'entrada';
-    final data = await showDialog<Map<String, String>>(
-        context: context,
-        builder: (context) => AlertDialog(
-                title: const Text('Lançamento de caixa'),
-                content: StatefulBuilder(
-                    builder: (context, setDialog) =>
-                        Column(mainAxisSize: MainAxisSize.min, children: [
-                          TextField(
-                              controller: description,
-                              decoration: const InputDecoration(
-                                  labelText: 'Descrição')),
-                          const SizedBox(height: 10),
-                          TextField(
-                              controller: amount,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
-                              decoration:
-                                  const InputDecoration(labelText: 'Valor')),
-                          const SizedBox(height: 10),
-                          DropdownButtonFormField<String>(
-                              initialValue: type,
-                              items: const [
-                                DropdownMenuItem(
-                                    value: 'entrada', child: Text('Entrada')),
-                                DropdownMenuItem(
-                                    value: 'saida', child: Text('Saída'))
-                              ],
-                              onChanged: (value) =>
-                                  setDialog(() => type = value ?? type),
-                              decoration:
-                                  const InputDecoration(labelText: 'Tipo')),
-                          const SizedBox(height: 10),
-                          TextField(
-                              controller: reason,
-                              decoration: const InputDecoration(
-                                  labelText: 'Observação opcional'))
-                        ])),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancelar')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(context, {
-                            'description': description.text.trim(),
-                            'amount': amount.text.trim(),
-                            'type': type,
-                            'reason': reason.text.trim(),
-                          }),
-                      child: const Text('Salvar'))
-                ]));
+    var recurring = false;
+    final data = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Lançamento de caixa'),
+        content: StatefulBuilder(
+          builder: (context, setDialog) => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: description,
+                  decoration: const InputDecoration(labelText: 'Descrição'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: amount,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Valor'),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: type,
+                  items: const [
+                    DropdownMenuItem(value: 'entrada', child: Text('Entrada')),
+                    DropdownMenuItem(value: 'saida', child: Text('Saída')),
+                  ],
+                  onChanged: (value) => setDialog(() {
+                    type = value ?? type;
+                    if (type != 'saida') recurring = false;
+                  }),
+                  decoration: const InputDecoration(labelText: 'Tipo'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: reason,
+                  decoration:
+                      const InputDecoration(labelText: 'Observação opcional'),
+                ),
+                if (type == 'saida') ...[
+                  const SizedBox(height: 8),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: recurring,
+                    onChanged: (value) =>
+                        setDialog(() => recurring = value == true),
+                    title: const Text('Despesa recorrente mensal'),
+                    subtitle: const Text(
+                      'O valor será debitado automaticamente todos os meses.',
+                    ),
+                  ),
+                  if (recurring)
+                    TextField(
+                      controller: recurringDay,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Dia mensal da cobrança (1 a 31)',
+                      ),
+                    ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, {
+              'description': description.text.trim(),
+              'amount': amount.text.trim(),
+              'type': type,
+              'reason': reason.text.trim(),
+              'recurring': recurring,
+              'recurringDay': int.tryParse(recurringDay.text.trim()),
+            }),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
     description.dispose();
     amount.dispose();
     reason.dispose();
-    if (data == null || data['description']!.isEmpty) return;
+    recurringDay.dispose();
+    if (data == null || '${data['description'] ?? ''}'.isEmpty) return;
     final parsedAmount = parseDecimalValue(data['amount']);
     if (parsedAmount == null || parsedAmount <= 0) {
       if (mounted) _message('Informe um valor positivo, como 19,90.');
+      return;
+    }
+    final day = data['recurringDay'] as int?;
+    if (data['recurring'] == true && (day == null || day < 1 || day > 31)) {
+      if (mounted) _message('Informe um dia mensal entre 1 e 31.');
       return;
     }
     final ok = await widget.viewModel.createCashEntry({
@@ -1379,11 +1699,16 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
       'amount': parsedAmount,
       'type': data['type'],
       'reason': data['reason'],
+      'recurring': data['recurring'],
+      'recurringDay': day,
     });
     if (mounted) {
       _message(ok
-          ? 'Lançamento registrado.'
-          : 'Não foi possível registrar o lançamento.');
+          ? data['recurring'] == true
+              ? 'Lançamento e recorrência mensal registrados.'
+              : 'Lançamento registrado.'
+          : widget.viewModel.error ??
+              'Não foi possível registrar o lançamento.');
     }
   }
 

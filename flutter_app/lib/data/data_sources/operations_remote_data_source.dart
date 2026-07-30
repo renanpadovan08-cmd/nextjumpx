@@ -26,8 +26,21 @@ class OperationsRemoteDataSource {
       _api.put('/units/barbers/$barberId', {'unitId': unitId});
   Future<dynamic> createCashEntry(Map<String, dynamic> body) =>
       _api.post('/operations/cash/entries', body);
-  Future<void> deleteCashEntry(String id) =>
-      _api.delete('/operations/cash/entries/$id');
+  Future<dynamic> updateCashEntry(String id, Map<String, dynamic> body) =>
+      _api.patch('/operations/cash/entries/$id', body);
+  Future<void> deleteCashEntry(String id, String reason) async {
+    await _api.post('/operations/cash/entries/$id/cancel', {'reason': reason});
+  }
+
+  Future<dynamic> disableCashRecurrence(String id, String reason) =>
+      _api.post('/operations/cash/recurrences/$id/disable', {'reason': reason});
+  Future<Map<String, dynamic>> cashAuditReport(String month) async =>
+      Map<String, dynamic>.from(
+        await _api.get(
+          '/operations/cash/audit-report',
+          query: {'month': month},
+        ) as Map,
+      );
   Future<dynamic> createCashClosure(Map<String, dynamic> body) =>
       _api.post('/operations/cash/closures', body);
   Future<dynamic> updateCashReceipt(String id, Map<String, dynamic> body) =>
