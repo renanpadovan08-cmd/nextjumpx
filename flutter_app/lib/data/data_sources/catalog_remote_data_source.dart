@@ -9,6 +9,27 @@ class CatalogRemoteDataSource {
               query: barberId == null ? null : {'barberId': barberId}) as List)
           .map((item) => ServiceDto.fromJson(item as Map<String, dynamic>))
           .toList();
+  Future<Map<String, dynamic>> listPage({
+    String? barberId,
+    int page = 1,
+    int pageSize = 10,
+  }) async {
+    final response = Map<String, dynamic>.from(
+      await _api.get('/services', query: {
+        'paginated': 'true',
+        'page': '$page',
+        'pageSize': '$pageSize',
+        if (barberId != null) 'barberId': barberId,
+      }) as Map,
+    );
+    return {
+      ...response,
+      'items': ((response['items'] as List?) ?? const [])
+          .map((item) => ServiceDto.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    };
+  }
+
   Future<ServiceDto> create(Map<String, dynamic> input) async =>
       ServiceDto.fromJson(
           await _api.post('/services', input) as Map<String, dynamic>);

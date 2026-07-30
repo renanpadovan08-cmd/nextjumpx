@@ -8,7 +8,7 @@ class AdminRepositoryImpl implements IAdminRepository {
   @override
   Future<Map<String, dynamic>> listShops({
     int page = 1,
-    int pageSize = 24,
+    int pageSize = 10,
     String search = '',
   }) =>
       _source.listShops(page: page, pageSize: pageSize, search: search);

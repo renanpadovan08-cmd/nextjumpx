@@ -14,6 +14,10 @@ class ProModuleViewModel extends ChangeNotifier {
   String lastCashCsv = '';
   bool cashConfigured = false;
   bool cashUnlocked = false;
+  bool loadingMore = false;
+  bool hasMore = false;
+  int page = 1;
+  int total = 0;
   List<Map<String, dynamic>> supportConversations = [];
   List<Map<String, dynamic>> supportMessages = [];
   String? activeConversationId;
@@ -31,6 +35,73 @@ class ProModuleViewModel extends ChangeNotifier {
         _ => null,
       };
 
+  bool _isPaginated(ProModule module) => const {
+        ProModule.wallet,
+        ProModule.whatsapp,
+        ProModule.pending,
+        ProModule.retention,
+      }.contains(module);
+
+  void _applyPage(
+    ProModule module,
+    Map<String, dynamic> response, {
+    required bool append,
+  }) {
+    final incoming = List<Map<String, dynamic>>.from(
+      (response[module == ProModule.retention ? 'risk' : 'items'] as List?) ??
+          const [],
+    );
+    if (module == ProModule.retention) {
+      final previous = append && data is Map
+          ? List<Map<String, dynamic>>.from(
+              ((data as Map)['risk'] as List?) ?? const [],
+            )
+          : <Map<String, dynamic>>[];
+      data = {
+        ...response,
+        'risk': [...previous, ...incoming],
+      };
+    } else if (module == ProModule.whatsapp) {
+      final previous = append && data is Map
+          ? Map<String, dynamic>.from(data as Map)
+          : <String, dynamic>{};
+      final today = List<Map<String, dynamic>>.from(
+        (previous['today'] as List?) ?? const [],
+      );
+      final tomorrow = List<Map<String, dynamic>>.from(
+        (previous['tomorrow'] as List?) ?? const [],
+      );
+      final wallet = List<Map<String, dynamic>>.from(
+        (previous['wallet'] as List?) ?? const [],
+      );
+      for (final row in incoming) {
+        switch ('${row['_period'] ?? ''}') {
+          case 'Carteira':
+            wallet.add(row);
+            break;
+          case 'Hoje':
+            today.add(row);
+            break;
+          default:
+            tomorrow.add(row);
+        }
+      }
+      data = {
+        'today': today,
+        'tomorrow': tomorrow,
+        'wallet': wallet,
+      };
+    } else {
+      final previous = append && data is List
+          ? List<Map<String, dynamic>>.from(data as List)
+          : <Map<String, dynamic>>[];
+      data = [...previous, ...incoming];
+    }
+    page = response['page'] as int? ?? page;
+    total = response['total'] as int? ?? incoming.length;
+    hasMore = response['hasNext'] == true;
+  }
+
   Future<void> load(ProModule module) async {
     final feature = _feature(module);
     if (feature == null &&
@@ -40,6 +111,11 @@ class ProModuleViewModel extends ChangeNotifier {
       return;
     }
     loading = true;
+    if (_isPaginated(module)) {
+      page = 1;
+      total = 0;
+      hasMore = false;
+    }
     notifyListeners();
     try {
       if (module == ProModule.cash) {
@@ -59,6 +135,14 @@ class ProModuleViewModel extends ChangeNotifier {
         await _loadSupport();
       } else if (module == ProModule.updates) {
         data = await _repository.updates();
+      } else if (_isPaginated(module)) {
+        final response = Map<String, dynamic>.from(
+          await _repository.get(feature!, query: const {
+            'page': '1',
+            'pageSize': '10',
+          }) as Map,
+        );
+        _applyPage(module, response, append: false);
       } else {
         data = await _repository.get(feature!);
       }
@@ -76,6 +160,34 @@ class ProModuleViewModel extends ChangeNotifier {
     }
     loading = false;
     notifyListeners();
+  }
+
+  Future<void> loadMore(ProModule module) async {
+    final feature = _feature(module);
+    if (!_isPaginated(module) ||
+        feature == null ||
+        loading ||
+        loadingMore ||
+        !hasMore) {
+      return;
+    }
+    loadingMore = true;
+    notifyListeners();
+    try {
+      final response = Map<String, dynamic>.from(
+        await _repository.get(feature, query: {
+          'page': '${page + 1}',
+          'pageSize': '10',
+        }) as Map,
+      );
+      _applyPage(module, response, append: true);
+      error = null;
+    } catch (exception) {
+      error = '$exception';
+    } finally {
+      loadingMore = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _loadSupport() async {

@@ -10,9 +10,10 @@ class AdminViewModel extends ChangeNotifier {
   List<Map<String, dynamic>> unitRequests = [];
   Map<String, dynamic> summary = const {};
   bool loading = false;
+  bool loadingMore = false;
   String? error;
   int page = 1;
-  int pageSize = 24;
+  int pageSize = 10;
   int filteredTotal = 0;
   int totalPages = 1;
   bool hasNext = false;
@@ -30,11 +31,20 @@ class AdminViewModel extends ChangeNotifier {
     }
   }
 
-  Future<void> load({int? targetPage, String? searchQuery}) async {
-    final generation = ++_loadGeneration;
+  Future<void> load({
+    int? targetPage,
+    String? searchQuery,
+    bool append = false,
+  }) async {
+    final generation = append ? _loadGeneration : ++_loadGeneration;
     final requestedPage = targetPage ?? page;
     final requestedSearch = searchQuery ?? search;
-    loading = true;
+    if (append) {
+      loadingMore = true;
+    } else {
+      loading = true;
+      loadingMore = false;
+    }
     notifyListeners();
     try {
       final futures = <Future<dynamic>>[
@@ -48,9 +58,10 @@ class AdminViewModel extends ChangeNotifier {
       final results = await Future.wait(futures);
       if (generation != _loadGeneration) return;
       final response = Map<String, dynamic>.from(results.first as Map);
-      items = List<Map<String, dynamic>>.from(
+      final incoming = List<Map<String, dynamic>>.from(
         (response['items'] as List?) ?? const [],
       );
+      items = append ? [...items, ...incoming] : incoming;
       summary = Map<String, dynamic>.from(
         (response['summary'] as Map?) ?? const {},
       );
@@ -69,12 +80,18 @@ class AdminViewModel extends ChangeNotifier {
       error = '$exception';
     }
     if (generation != _loadGeneration) return;
-    loading = false;
+    if (append) {
+      loadingMore = false;
+    } else {
+      loading = false;
+    }
     notifyListeners();
   }
 
   Future<void> nextPage() async {
-    if (!loading && hasNext) await load(targetPage: page + 1);
+    if (!loading && !loadingMore && hasNext) {
+      await load(targetPage: page + 1, append: true);
+    }
   }
 
   Future<void> previousPage() async {

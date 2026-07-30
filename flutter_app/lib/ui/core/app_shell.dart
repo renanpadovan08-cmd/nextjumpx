@@ -236,7 +236,7 @@ class _AppShellState extends State<AppShell> {
       case 12:
         barbers.viewModel.load();
       case 13:
-        catalog.viewModel.load(
+        catalog.viewModel.loadPaginated(
           widget.app.user!.isManager ? null : widget.app.user!.id,
         );
       case 14:

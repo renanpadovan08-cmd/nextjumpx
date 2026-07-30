@@ -6,7 +6,7 @@ class AdminRemoteDataSource {
 
   Future<Map<String, dynamic>> listShops({
     int page = 1,
-    int pageSize = 24,
+    int pageSize = 10,
     String search = '',
   }) async =>
       Map<String, dynamic>.from(

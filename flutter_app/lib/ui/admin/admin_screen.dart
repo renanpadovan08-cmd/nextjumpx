@@ -26,16 +26,26 @@ class _AdminScreenState extends State<AdminScreen> {
     widget.viewModel
       ..addListener(_refresh)
       ..load();
+    _scrollController.addListener(_loadNextPage);
   }
 
   void _refresh() {
     if (mounted) setState(() {});
   }
 
+  void _loadNextPage() {
+    if (_scrollController.hasClients &&
+        _scrollController.position.extentAfter <= 360) {
+      widget.viewModel.nextPage();
+    }
+  }
+
   @override
   void dispose() {
     _searchDebounce?.cancel();
-    _scrollController.dispose();
+    _scrollController
+      ..removeListener(_loadNextPage)
+      ..dispose();
     widget.viewModel.removeListener(_refresh);
     super.dispose();
   }
@@ -80,21 +90,6 @@ class _AdminScreenState extends State<AdminScreen> {
     });
   }
 
-  Future<void> _changePage(bool next) async {
-    if (next) {
-      await widget.viewModel.nextPage();
-    } else {
-      await widget.viewModel.previousPage();
-    }
-    if (mounted && _scrollController.hasClients) {
-      await _scrollController.animateTo(
-        0,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) => RefreshIndicator(
         onRefresh: () => widget.viewModel.load(targetPage: 1),
@@ -114,21 +109,14 @@ class _AdminScreenState extends State<AdminScreen> {
             const SizedBox(height: 16),
             Wrap(spacing: 12, runSpacing: 12, children: [
               _metric('Cadastros', '${_summary('total')}', ZenColors.sky),
-              _metric(
-                  'Ativos',
-                  '${_summary('active')}',
-                  ZenColors.green),
-              _metric(
-                  'Pendentes',
-                  '${_summary('pending')}',
+              _metric('Ativos', '${_summary('active')}', ZenColors.green),
+              _metric('Pendentes', '${_summary('pending')}',
                   const Color(0xfff0bd45)),
-              _metric(
-                  'Bloqueados',
-                  '${_summary('blocked')}',
+              _metric('Bloqueados', '${_summary('blocked')}',
                   const Color(0xffee7474)),
               _metric(
                 widget.viewModel.filteredTotal > widget.viewModel.items.length
-                    ? 'MRR da pagina'
+                    ? 'MRR carregado'
                     : 'MRR',
                 _money(_mrr),
                 const Color(0xffb79cff),
@@ -171,12 +159,11 @@ class _AdminScreenState extends State<AdminScreen> {
                         child: Center(
                             child: Text('Nenhum cadastro encontrado.',
                                 style: TextStyle(color: ZenColors.muted))))
-                  else
-                    ...[
-                      ..._items.map(_account),
-                      const SizedBox(height: 14),
-                      _pagination(),
-                    ],
+                  else ...[
+                    ..._items.map(_account),
+                    const SizedBox(height: 14),
+                    _pagination(),
+                  ],
                 ])),
             const SizedBox(height: 16),
             _unitRequestsCard(),
@@ -186,39 +173,28 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget _pagination() {
     final viewModel = widget.viewModel;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Column(
       children: [
-        Expanded(
-          child: Text(
-            viewModel.filteredTotal == 0
-                ? 'Nenhum resultado'
-                : 'Pagina ${viewModel.page} de ${viewModel.totalPages} '
-                    '(${viewModel.filteredTotal} registros)',
-            style: const TextStyle(color: ZenColors.muted, fontSize: 12),
+        Text(
+          viewModel.filteredTotal == 0
+              ? 'Nenhum resultado'
+              : '${viewModel.items.length} de '
+                  '${viewModel.filteredTotal} registros carregados',
+          style: const TextStyle(color: ZenColors.muted, fontSize: 12),
+        ),
+        if (viewModel.loadingMore)
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: CircularProgressIndicator(),
+          )
+        else if (viewModel.hasNext)
+          const Padding(
+            padding: EdgeInsets.only(top: 8),
+            child: Text(
+              'Role para carregar mais 10 registros',
+              style: TextStyle(color: ZenColors.muted, fontSize: 11),
+            ),
           ),
-        ),
-        const SizedBox(width: 10),
-        IconButton.outlined(
-          tooltip: 'Pagina anterior',
-          onPressed: !viewModel.loading && viewModel.page > 1
-              ? () => _changePage(false)
-              : null,
-          icon: const Icon(Icons.chevron_left_rounded),
-        ),
-        const SizedBox(width: 8),
-        IconButton.outlined(
-          tooltip: 'Proxima pagina',
-          onPressed: !viewModel.loading && viewModel.hasNext
-              ? () => _changePage(true)
-              : null,
-          icon: viewModel.loading
-              ? const SizedBox.square(
-                  dimension: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.chevron_right_rounded),
-        ),
       ],
     );
   }

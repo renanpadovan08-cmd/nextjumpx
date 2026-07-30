@@ -59,6 +59,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
   final Map<String, String> _currentInputs = {};
   final TextEditingController _supportMessage = TextEditingController();
   final TextEditingController _cashPassword = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   Timer? _supportRefreshTimer;
   String _activeFilter = 'Todos';
   List<Map<String, dynamic>>? _weeklySchedule;
@@ -82,6 +83,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     widget.viewModel
       ..addListener(_refresh)
       ..load(widget.module);
+    _scrollController.addListener(_loadNextPage);
     if (widget.module == ProModule.support) {
       _supportRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
         if (mounted && !widget.viewModel.loading) {
@@ -95,10 +97,21 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     if (mounted) setState(() {});
   }
 
+  void _loadNextPage() {
+    if (!_scrollController.hasClients ||
+        _scrollController.position.extentAfter > 360) {
+      return;
+    }
+    widget.viewModel.loadMore(widget.module);
+  }
+
   @override
   void dispose() {
     widget.viewModel.removeListener(_refresh);
     _supportRefreshTimer?.cancel();
+    _scrollController
+      ..removeListener(_loadNextPage)
+      ..dispose();
     _supportMessage.dispose();
     _cashPassword.dispose();
     super.dispose();
@@ -125,6 +138,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
 
   @override
   Widget build(BuildContext context) => ListView(
+        controller: _scrollController,
         padding: const EdgeInsets.fromLTRB(32, 26, 32, 92),
         children: [
           _eyebrow(),
@@ -148,6 +162,21 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
             ProModule.units => _units(),
             ProModule.updates => _updates(),
           },
+          if (widget.viewModel.loadingMore)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (widget.viewModel.hasMore)
+            const Padding(
+              padding: EdgeInsets.only(top: 14),
+              child: Center(
+                child: Text(
+                  'Role para carregar mais 10 registros',
+                  style: TextStyle(color: ZenColors.muted, fontSize: 12),
+                ),
+              ),
+            ),
         ],
       );
 

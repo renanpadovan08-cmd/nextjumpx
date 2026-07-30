@@ -55,7 +55,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String get _heroTitle {
     final name = widget.userName.trim();
     final displayName = name.isEmpty ? 'Renan' : name;
-    return '${_greeting()}, $displayName 👋';
+    return '${_greeting()}, $displayName';
   }
 
   @override
@@ -159,9 +159,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1.05)),
         const SizedBox(height: 7),
-        Text(_heroTitle,
-            style: const TextStyle(
-                fontSize: 27, fontWeight: FontWeight.w900, letterSpacing: -.7)),
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                _heroTitle,
+                style: const TextStyle(
+                  fontSize: 27,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -.7,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(
+              Icons.waving_hand_rounded,
+              color: Color(0xffffc857),
+              size: 25,
+            ),
+          ],
+        ),
         const SizedBox(height: 7),
         const Text(
             'Painel executivo com agenda, dinheiro, WhatsApp e oportunidades de retorno em uma única tela.',

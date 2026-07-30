@@ -22,12 +22,12 @@ class _AdminRepositoryFake implements IAdminRepository {
       ],
       'page': page,
       'pageSize': pageSize,
-      'filteredTotal': 48,
+      'filteredTotal': 20,
       'totalPages': 2,
       'hasNext': page < 2,
       'summary': {
-        'total': 48,
-        'active': 40,
+        'total': 20,
+        'active': 12,
         'pending': 5,
         'blocked': 3,
       },
@@ -42,7 +42,7 @@ class _AdminRepositoryFake implements IAdminRepository {
 }
 
 void main() {
-  test('admin mantém somente uma página de contas em memória', () async {
+  test('admin acrescenta a próxima página ao chegar no fim', () async {
     final repository = _AdminRepositoryFake();
     final viewModel = AdminViewModel(repository);
 
@@ -50,11 +50,11 @@ void main() {
     expect(viewModel.page, 1);
     expect(viewModel.items.single['id'], 'shop-1');
     expect(viewModel.hasNext, isTrue);
-    expect(viewModel.summary['total'], 48);
+    expect(viewModel.summary['total'], 20);
 
     await viewModel.nextPage();
     expect(viewModel.page, 2);
-    expect(viewModel.items.single['id'], 'shop-2');
+    expect(viewModel.items.map((item) => item['id']), ['shop-1', 'shop-2']);
     expect(viewModel.hasNext, isFalse);
     expect(repository.requestedPages, [1, 2]);
   });

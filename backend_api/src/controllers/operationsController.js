@@ -26,6 +26,12 @@ import {
   filterBarbersBySelectedUnit,
   selectedUnitId,
 } from '../services/unitScopeService.js';
+import {
+  executePage,
+  pageOptions,
+  pagePayload,
+  wantsPagination,
+} from '../services/pagination.js';
 
 const paidStatuses = ['concluido', 'finalizado'];
 const openStatuses = ['agendado', 'encaixe', 'em_andamento'];
@@ -63,6 +69,20 @@ async function scopedAppointments(req, {
   );
 }
 
+async function scopedAppointmentsPage(req, {
+  select = '*,services(name,price,duration),barbers(name,shop_name,shop_id)',
+  filter,
+} = {}) {
+  const options = pageOptions(req.query);
+  const barbers = await scopedBarbers(req);
+  if (!barbers.length) return pagePayload([], 0, options);
+  let builder = supabase.from('appointments')
+    .select(select, { count: 'exact' })
+    .in('barber_id', barbers.map((barber) => barber.id));
+  if (filter) builder = filter(builder);
+  return executePage(builder.order('date').order('time'), options);
+}
+
 async function ownedAppointment(req, id) {
   const { user } = req;
   const appointment = await one(supabase.from('appointments').select('*,services(name,price,duration),barbers(name,shop_name,shop_id)').eq('id', id), 'Lancamento nao encontrado');
@@ -75,6 +95,12 @@ async function ownedAppointment(req, id) {
 }
 
 export async function wallet(req, res) {
+  if (wantsPagination(req.query)) {
+    res.json(await scopedAppointmentsPage(req, {
+      filter: (builder) => builder.eq('status', 'em_carteira'),
+    }));
+    return;
+  }
   res.json(await scopedAppointments(req, {
     filter: (builder) => builder.eq('status', 'em_carteira'),
   }));
@@ -103,6 +129,13 @@ export async function walletAction(req, res) {
 }
 
 export async function pending(req, res) {
+  if (wantsPagination(req.query)) {
+    res.json(await scopedAppointmentsPage(req, {
+      filter: (builder) =>
+        builder.in('status', openStatuses).lt('date', today()),
+    }));
+    return;
+  }
   res.json(await scopedAppointments(req, {
     filter: (builder) => builder.in('status', openStatuses).lt('date', today()),
   }));
@@ -153,6 +186,8 @@ export async function commissions(req, res) {
 }
 
 export async function retention(req, res) {
+  const paginated = wantsPagination(req.query);
+  const pagination = pageOptions(req.query);
   const rows = await scopedAppointments(req, {
     filter: (builder) => builder.in('status', [
       ...paidStatuses,
@@ -202,7 +237,12 @@ export async function retention(req, res) {
       visits: history.length,
       totalSpend: client.totalSpend,
       averageSpend: history.length ? client.totalSpend / history.length : 0,
-      history: [...history].reverse().map((item) => ({
+      _history: history,
+    };
+  }).sort((a, b) => b.daysAway - a.daysAway);
+  const serializeClient = ({ _history, ...client }) => ({
+    ...client,
+    history: [..._history].reverse().map((item) => ({
         id: item.id,
         date: item.date,
         time: item.time,
@@ -212,8 +252,7 @@ export async function retention(req, res) {
         ),
         barber: item.barbers?.name || '',
       })),
-    };
-  }).sort((a, b) => b.daysAway - a.daysAway);
+  });
   const currentMonth = today().slice(0, 7);
   const recovered = [...clients.values()].filter((client) => {
     const history = [...client.appointments].sort((a, b) =>
@@ -281,8 +320,12 @@ export async function retention(req, res) {
       + revenueScore * 0.2
       + attendance * 0.2,
   );
+  const offset = (pagination.page - 1) * pagination.pageSize;
+  const riskRows = paginated
+    ? clientRows.slice(offset, offset + pagination.pageSize)
+    : clientRows;
   res.json({
-    risk: clientRows,
+    risk: riskRows.map(serializeClient),
     active,
     atRisk: riskCount,
     lost,
@@ -295,6 +338,19 @@ export async function retention(req, res) {
       revenue: revenueScore,
       attendance,
     },
+    ...(paginated
+      ? {
+          page: pagination.page,
+          pageSize: pagination.pageSize,
+          total: clientRows.length,
+          totalPages: Math.max(
+            1,
+            Math.ceil(clientRows.length / pagination.pageSize),
+          ),
+          hasNext:
+            pagination.page * pagination.pageSize < clientRows.length,
+        }
+      : {}),
   });
 }
 
@@ -942,6 +998,73 @@ export async function deleteSelfClosure(req, res) {
 
 export async function whatsapp(req, res) {
   const tomorrowDate = addDaysIso(today(), 1);
+  if (wantsPagination(req.query)) {
+    const options = pageOptions(req.query);
+    const barbers = await scopedBarbers(req);
+    if (!barbers.length) {
+      res.json(pagePayload([], 0, options));
+      return;
+    }
+    const barberIds = barbers.map((barber) => barber.id);
+    const select =
+      '*,services(name,price,duration),barbers(name,shop_name,shop_id)';
+    const groups = [
+      {
+        period: 'Hoje',
+        filter: (builder) =>
+          builder.in('status', openStatuses).eq('date', today()),
+      },
+      {
+        period: 'Amanha',
+        filter: (builder) =>
+          builder.in('status', openStatuses).eq('date', tomorrowDate),
+      },
+      {
+        period: 'Carteira',
+        filter: (builder) => builder.eq('status', 'em_carteira'),
+      },
+    ];
+    const counts = await Promise.all(groups.map(async (group) => {
+      const { count, error } = await group.filter(
+        supabase.from('appointments')
+          .select('id', { count: 'exact', head: true })
+          .in('barber_id', barberIds),
+      );
+      if (error) throw new HttpError(400, error.message);
+      return Number(count || 0);
+    }));
+    const total = counts.reduce((sum, count) => sum + count, 0);
+    let offset = (options.page - 1) * options.pageSize;
+    let remaining = options.pageSize;
+    const items = [];
+    for (let index = 0; index < groups.length && remaining > 0; index += 1) {
+      const groupCount = counts[index];
+      if (offset >= groupCount) {
+        offset -= groupCount;
+        continue;
+      }
+      const take = Math.min(remaining, groupCount - offset);
+      const group = groups[index];
+      const builder = group.filter(
+        supabase.from('appointments')
+          .select(select)
+          .in('barber_id', barberIds),
+      );
+      const { data, error } = await builder
+        .order('date')
+        .order('time')
+        .range(offset, offset + take - 1);
+      if (error) throw new HttpError(400, error.message);
+      items.push(...(data || []).map((row) => ({
+        ...row,
+        _period: group.period,
+      })));
+      remaining -= take;
+      offset = 0;
+    }
+    res.json(pagePayload(items, total, options));
+    return;
+  }
   const [walletRows, scheduleRows] = await Promise.all([
     scopedAppointments(req, {
       filter: (builder) => builder.eq('status', 'em_carteira'),

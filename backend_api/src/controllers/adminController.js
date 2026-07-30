@@ -7,7 +7,7 @@ import { makeCashPasswordHash } from '../services/cashPasswordPolicy.js';
 const barberColumns = 'id,name,login,phone,shop_name,shop_id,role,access_status,expires_at,activation_note,created_at';
 const settingFields = ['monthly_fee', 'due_day', 'subscription_status', 'payment_method', 'plan_started_at', 'plan_ends_at', 'last_payment_at', 'bonus_note', 'internal_note', 'multiunit_enabled'];
 const accountFields = ['name', 'login', 'phone', 'shop_name', 'role', 'access_status', 'expires_at', 'activation_note'];
-const defaultPageSize = 24;
+const defaultPageSize = 10;
 const maximumPageSize = 50;
 const summaryCacheDurationMs = 30000;
 let summaryCache;

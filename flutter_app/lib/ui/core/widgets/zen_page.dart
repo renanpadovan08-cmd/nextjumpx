@@ -7,10 +7,12 @@ class ZenPage extends StatelessWidget {
       {super.key,
       required this.title,
       required this.children,
-      this.actions = const []});
+      this.actions = const [],
+      this.controller});
   final String title;
   final List<Widget> children;
   final List<Widget> actions;
+  final ScrollController? controller;
   @override
   Widget build(BuildContext context) => LayoutBuilder(
         builder: (context, constraints) {
@@ -33,6 +35,7 @@ class ZenPage extends StatelessWidget {
           );
 
           return ListView(
+            controller: controller,
             padding: EdgeInsets.fromLTRB(
               compact ? 14 : 20,
               compact ? 16 : 22,

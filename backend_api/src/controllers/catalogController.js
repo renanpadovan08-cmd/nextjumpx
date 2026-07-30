@@ -7,6 +7,12 @@ import {
 import { isInternalService } from '../services/servicePolicy.js';
 import { HttpError } from '../utils/httpError.js';
 import { filterBarbersBySelectedUnit } from '../services/unitScopeService.js';
+import {
+  executePage,
+  pageOptions,
+  pagePayload,
+  wantsPagination,
+} from '../services/pagination.js';
 
 async function ensureServiceAccess(req, serviceId) {
   const { user } = req;
@@ -21,7 +27,12 @@ async function ensureServiceAccess(req, serviceId) {
 
 export async function listServices(req, res) {
   const barberId = req.query.barberId;
-  const builder = supabase.from('services').select('*').eq('active', true).order('display_order', { ascending: true }).order('created_at', { ascending: true });
+  const paginated = wantsPagination(req.query);
+  const builder = supabase.from('services')
+    .select('*', paginated ? { count: 'exact' } : undefined)
+    .eq('active', true)
+    .order('display_order', { ascending: true })
+    .order('created_at', { ascending: true });
   if (barberId) {
     const barber = await one(supabase.from('barbers').select('id,shop_name,shop_id').eq('id', barberId), 'Barbeiro nao encontrado');
     if (!isAdminRole(req.user.role) && !sameShop(req.user, barber)) throw new HttpError(403, 'Barbeiro fora da sua barbearia');
@@ -47,10 +58,20 @@ export async function listServices(req, res) {
     }
     barbers = await filterBarbersBySelectedUnit(req, barbers);
     if (!barbers.length) {
-      res.json([]);
+      res.json(paginated
+        ? pagePayload([], 0, pageOptions(req.query))
+        : []);
       return;
     }
     builder.in('barber_id', barbers.map((barber) => barber.id));
+  }
+  if (paginated) {
+    const result = await executePage(builder, pageOptions(req.query));
+    res.json({
+      ...result,
+      items: result.items.filter((service) => !isInternalService(service)),
+    });
+    return;
   }
   res.json((await query(builder))
     .filter((service) => !isInternalService(service)));

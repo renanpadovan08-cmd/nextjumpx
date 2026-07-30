@@ -27,23 +27,37 @@ class CatalogScreen extends StatefulWidget {
 }
 
 class _CatalogScreenState extends State<CatalogScreen> {
+  final ScrollController _scrollController = ScrollController();
+
   @override
   void initState() {
     super.initState();
     widget.viewModel.addListener(_reload);
     widget.barbers.addListener(_reload);
+    _scrollController.addListener(_loadNextPage);
     _initialize();
   }
 
   Future<void> _initialize() async {
     await widget.barbers.load();
-    await widget.viewModel.load(widget.user.isManager ? null : widget.user.id);
+    await widget.viewModel
+        .loadPaginated(widget.user.isManager ? null : widget.user.id);
+  }
+
+  void _loadNextPage() {
+    if (_scrollController.hasClients &&
+        _scrollController.position.extentAfter <= 320) {
+      widget.viewModel.loadMore();
+    }
   }
 
   @override
   void dispose() {
     widget.viewModel.removeListener(_reload);
     widget.barbers.removeListener(_reload);
+    _scrollController
+      ..removeListener(_loadNextPage)
+      ..dispose();
     super.dispose();
   }
 
@@ -58,6 +72,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
     }
 
     return ZenPage(
+      controller: _scrollController,
       title: 'Serviços',
       actions: [
         FilledButton.icon(
@@ -72,6 +87,21 @@ class _CatalogScreenState extends State<CatalogScreen> {
             padding: const EdgeInsets.only(bottom: 10),
             child: ZenCard(
               child: _serviceTile(service),
+            ),
+          ),
+        if (widget.viewModel.loadingMore)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 18),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (widget.viewModel.hasMore)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Center(
+              child: Text(
+                'Role para carregar mais 10 servicos',
+                style: TextStyle(color: ZenColors.muted, fontSize: 12),
+              ),
             ),
           ),
       ],

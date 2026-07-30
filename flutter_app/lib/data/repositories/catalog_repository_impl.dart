@@ -8,6 +8,17 @@ class CatalogRepositoryImpl implements ICatalogRepository {
   @override
   Future<List<ServiceDto>> list([String? barberId]) => _source.list(barberId);
   @override
+  Future<Map<String, dynamic>> listPage({
+    String? barberId,
+    int page = 1,
+    int pageSize = 10,
+  }) =>
+      _source.listPage(
+        barberId: barberId,
+        page: page,
+        pageSize: pageSize,
+      );
+  @override
   Future<ServiceDto> create(Map<String, dynamic> input) =>
       _source.create(input);
   @override
