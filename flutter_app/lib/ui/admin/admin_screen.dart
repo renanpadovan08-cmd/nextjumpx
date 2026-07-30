@@ -718,6 +718,9 @@ class _AdminScreenState extends State<AdminScreen> {
                           DropdownMenuItem(
                               value: 'gerente', child: Text('Gerente')),
                           DropdownMenuItem(
+                              value: 'recepcionista',
+                              child: Text('Recepcionista')),
+                          DropdownMenuItem(
                               value: 'barbeiro', child: Text('Barbeiro'))
                         ],
                         onChanged: (newValue) =>

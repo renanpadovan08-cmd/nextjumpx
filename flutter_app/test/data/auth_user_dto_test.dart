@@ -80,4 +80,16 @@ void main() {
     expect(allowed.canSelfBlockAgenda, isTrue);
     expect(blocked.canSelfBlockAgenda, isFalse);
   });
+
+  test('recepcionista visualiza a equipe sem receber poder de gerente', () {
+    final receptionist = AuthUserDto.fromJson({
+      'id': 'reception-1',
+      'role': 'recepcao',
+      'shop_id': 'shop-1',
+    });
+
+    expect(receptionist.role, 'recepcionista');
+    expect(receptionist.isManager, isFalse);
+    expect(receptionist.canViewTeamAgenda, isTrue);
+  });
 }

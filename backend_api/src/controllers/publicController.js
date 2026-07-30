@@ -1,10 +1,15 @@
 import { supabase, query, one } from '../services/supabaseService.js';
 import { intervalsOverlap, validateSlot } from '../services/schedulePolicy.js';
 import { isInternalService } from '../services/servicePolicy.js';
+import { isBarberRole } from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
 
 const statuses = ['agendado', 'em_carteira', 'encaixe', 'em_andamento', 'bloqueio'];
-const barberColumns = 'id,name,phone,shop_name,shop_id,photo_url,background_url,work_start,work_end,lunch_start,lunch_end,off_days,access_status';
+const barberColumns = 'id,name,phone,shop_name,shop_id,role,photo_url,background_url,work_start,work_end,lunch_start,lunch_end,off_days,access_status';
+
+function isPublicProfessional(barber) {
+  return isBarberRole(barber?.role);
+}
 
 function publicBarber(row) {
   return {
@@ -19,10 +24,14 @@ function publicServices(rows) {
 }
 
 async function activeBarber(id) {
-  return publicBarber(await one(
+  const barber = await one(
     supabase.from('barbers').select(barberColumns).eq('id', id).in('access_status', ['ativo', 'active']),
     'Profissional indisponivel',
-  ));
+  );
+  if (!isPublicProfessional(barber)) {
+    throw new HttpError(404, 'Profissional indisponivel');
+  }
+  return publicBarber(barber);
 }
 
 export async function bookingContext(req, res) {
@@ -35,7 +44,9 @@ export async function bookingContext(req, res) {
   barberBuilder = owner.shop_id
     ? barberBuilder.eq('shop_id', owner.shop_id)
     : barberBuilder.eq('shop_name', owner.shop_name);
-  const barbers = (await query(barberBuilder)).map(publicBarber);
+  const barbers = (await query(barberBuilder))
+    .filter(isPublicProfessional)
+    .map(publicBarber);
   const services = barbers.length
     ? publicServices(await query(supabase.from('services').select('*').in('barber_id', barbers.map((barber) => barber.id)).eq('active', true).order('display_order').order('created_at')))
     : [];

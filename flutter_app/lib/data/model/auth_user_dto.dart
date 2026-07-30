@@ -37,6 +37,9 @@ class AuthUserDto {
     if (const ['gerente', 'manager', 'owner', 'dono'].contains(value)) {
       return 'gerente';
     }
+    if (const ['recepcionista', 'receptionist', 'recepcao'].contains(value)) {
+      return 'recepcionista';
+    }
     if (const ['barber', 'barbeiro'].contains(value)) return 'barber';
     return value;
   }
@@ -44,6 +47,7 @@ class AuthUserDto {
   bool get isAdmin => role == 'admin';
   bool get isManager =>
       isAdmin || role == 'gerente' || (shopId.isNotEmpty && shopId == id);
+  bool get canViewTeamAgenda => isManager || role == 'recepcionista';
   bool get canSelfBlockAgenda =>
       isManager ||
       activationNote.toUpperCase().split('|').any(

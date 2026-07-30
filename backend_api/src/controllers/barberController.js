@@ -27,8 +27,9 @@ export async function listBarbers(req, res) {
 export async function publicBarbers(req, res) {
   res.json(await query(
     supabase.from('barbers')
-      .select('id,name,phone,shop_name,shop_id,photo_url,work_start,work_end,lunch_start,lunch_end,off_days')
+      .select('id,name,phone,shop_name,shop_id,role,photo_url,work_start,work_end,lunch_start,lunch_end,off_days')
       .eq('shop_name', req.params.shopName)
+      .in('role', ['barber', 'barbeiro'])
       .in('access_status', ['ativo', 'active'])
       .order('created_at'),
   ));
@@ -78,7 +79,7 @@ export async function updateBarber(req, res) {
   }
   if (patch.role != null) {
     const role = String(patch.role).trim().toLowerCase();
-    if (!['barber', 'barbeiro', 'gerente'].includes(role)) {
+    if (!['barber', 'barbeiro', 'gerente', 'recepcionista'].includes(role)) {
       throw new HttpError(400, 'Perfil de acesso invalido');
     }
     patch.role = role === 'barbeiro' ? 'barber' : role;

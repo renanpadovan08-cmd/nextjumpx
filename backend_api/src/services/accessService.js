@@ -4,6 +4,9 @@ export function normalizeRole(role) {
   const value = String(role || '').trim().toLowerCase();
   if (['admin', 'admin_master', 'master', 'adm'].includes(value)) return 'admin';
   if (['gerente', 'manager', 'owner', 'dono'].includes(value)) return 'gerente';
+  if (['recepcionista', 'receptionist', 'recepcao'].includes(value)) {
+    return 'recepcionista';
+  }
   if (['barber', 'barbeiro'].includes(value)) return 'barber';
   return value;
 }
@@ -18,6 +21,11 @@ export function isManagerRole(role) {
 
 export function isBarberRole(role) {
   return normalizeRole(role) === 'barber';
+}
+
+export function canOperateShopAgenda(user) {
+  return canManageShop(user)
+    || normalizeRole(user?.role) === 'recepcionista';
 }
 
 // The legacy site also treated the first shop record as its owner. During the

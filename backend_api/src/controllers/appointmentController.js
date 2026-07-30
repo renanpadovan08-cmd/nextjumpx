@@ -6,8 +6,8 @@ import {
 } from '../services/supabaseService.js';
 import {
   assertShopAccess,
+  canOperateShopAgenda,
   isAdminRole,
-  isRestrictedBarber,
 } from '../services/accessService.js';
 import { intervalsOverlap, validateSlot } from '../services/schedulePolicy.js';
 import { normalizeAppointmentPatch } from '../services/appointmentPatch.js';
@@ -21,7 +21,7 @@ async function ensureBarberAccess(req, barberId) {
   const { user } = req;
   const barber = await one(supabase.from('barbers').select('id,shop_name,shop_id').eq('id', barberId), 'Barbeiro nao encontrado');
   assertShopAccess(user, barber);
-  if (isRestrictedBarber(user) && barber.id !== user.id) {
+  if (!canOperateShopAgenda(user) && barber.id !== user.id) {
     throw new HttpError(403, 'Voce so pode operar sua propria agenda');
   }
   if (!(await filterBarbersBySelectedUnit(req, [barber])).length) {
@@ -59,7 +59,7 @@ export async function listAppointments(req, res) {
       shopBarbers = await query(
         supabase.from('barbers').select('id,shop_id,shop_name'),
       );
-    } else if (isRestrictedBarber(req.user)) {
+    } else if (!canOperateShopAgenda(req.user)) {
       shopBarbers = [{ id: req.user.id }];
     } else {
       let shopBuilder = supabase.from('barbers').select('id');
@@ -121,7 +121,8 @@ export async function updateAppointment(req, res) {
   const current = await one(supabase.from('appointments').select('*,barbers(shop_name,shop_id)').eq('id', req.params.id), 'Agendamento nao encontrado');
   assertShopAccess(req.user, { id: current.barber_id, ...current.barbers });
   await ensureBarberAccess(req, current.barber_id);
-  if (isRestrictedBarber(req.user) && current.barber_id !== req.user.id) {
+  if (!canOperateShopAgenda(req.user)
+      && current.barber_id !== req.user.id) {
     throw new HttpError(403, 'Voce so pode operar sua propria agenda');
   }
   const patch = normalizeAppointmentPatch(req.body);
@@ -144,7 +145,8 @@ export async function deleteAppointment(req, res) {
   const current = await one(supabase.from('appointments').select('*,barbers(shop_name,shop_id)').eq('id', req.params.id), 'Agendamento nao encontrado');
   assertShopAccess(req.user, { id: current.barber_id, ...current.barbers });
   await ensureBarberAccess(req, current.barber_id);
-  if (isRestrictedBarber(req.user) && current.barber_id !== req.user.id) {
+  if (!canOperateShopAgenda(req.user)
+      && current.barber_id !== req.user.id) {
     throw new HttpError(403, 'Voce so pode operar sua propria agenda');
   }
   await query(supabase.from('appointments').update({

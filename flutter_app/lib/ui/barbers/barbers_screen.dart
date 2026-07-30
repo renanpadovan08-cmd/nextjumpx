@@ -213,7 +213,9 @@ class _BarbersScreenState extends State<BarbersScreen> {
     final photoUrl = TextEditingController(text: barber.photoUrl);
     var role = ['gerente', 'manager', 'owner'].contains(barber.role)
         ? 'gerente'
-        : 'barber';
+        : barber.role == 'recepcionista'
+            ? 'recepcionista'
+            : 'barber';
     var canSelfBlock = barber.canSelfBlock;
     PlatformFile? selectedPhoto;
     final data = await showDialog<Map<String, dynamic>>(
@@ -243,6 +245,10 @@ class _BarbersScreenState extends State<BarbersScreen> {
                       DropdownMenuItem(
                         value: 'gerente',
                         child: Text('Gerente'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'recepcionista',
+                        child: Text('Recepcionista'),
                       ),
                     ],
                     onChanged: (value) =>

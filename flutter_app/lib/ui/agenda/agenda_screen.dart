@@ -156,9 +156,9 @@ class _AgendaScreenState extends State<AgendaScreen> {
           if (widget.barbers.items.length > 1) ...[
             DropdownButtonFormField<String>(
               initialValue: _selectedBarberId ??
-                  (widget.user.isManager ? _allBarbersValue : null),
+                  (widget.user.canViewTeamAgenda ? _allBarbersValue : null),
               items: [
-                if (widget.user.isManager)
+                if (widget.user.canViewTeamAgenda)
                   const DropdownMenuItem(
                     value: _allBarbersValue,
                     child: Text('Todos os profissionais'),

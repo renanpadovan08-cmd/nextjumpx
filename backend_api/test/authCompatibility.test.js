@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { requireRoles } from '../src/middleware/authMiddleware.js';
 import {
+  canOperateShopAgenda,
   canManageShop,
   isBarberRole,
   isManagerRole,
@@ -59,6 +60,11 @@ test('normaliza os papeis antigos sem liberar perfis indevidos', () => {
     assert.equal(normalizeRole(role), 'gerente');
   }
 
+  assert.equal(normalizeRole('recepcao'), 'recepcionista');
+  assert.equal(isManagerRole('recepcionista'), false);
+  assert.equal(canManageShop({ role: 'recepcionista' }), false);
+  assert.equal(canOperateShopAgenda({ role: 'recepcionista' }), true);
+
   managerOnly({
     user: { id: 'owner-1', shopId: 'owner-1', role: 'barbeiro' },
   }, null, (error) => {
@@ -87,6 +93,8 @@ test('normaliza os papeis antigos sem liberar perfis indevidos', () => {
 test('trata barber e barbeiro igualmente e prioriza shop_id', () => {
   assert.equal(isBarberRole('barber'), true);
   assert.equal(isBarberRole('barbeiro'), true);
+  assert.equal(isBarberRole('gerente'), false);
+  assert.equal(isBarberRole('recepcionista'), false);
   assert.equal(sameShop(
     { shopId: 'shop-a', shopName: 'Nome repetido' },
     { shop_id: 'shop-b', shop_name: 'Nome repetido' },
