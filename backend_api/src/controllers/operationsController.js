@@ -49,13 +49,17 @@ async function scopedBarbers(req) {
   return filterBarbersBySelectedUnit(req, await query(builder));
 }
 
-async function scopedAppointments(req, select = '*,services(name,price,duration),barbers(name,shop_name,shop_id)') {
+async function scopedAppointments(req, {
+  select = '*,services(name,price,duration),barbers(name,shop_name,shop_id)',
+  filter,
+} = {}) {
   const barbers = await scopedBarbers(req);
   if (!barbers.length) return [];
+  let builder = supabase.from('appointments').select(select)
+    .in('barber_id', barbers.map((barber) => barber.id));
+  if (filter) builder = filter(builder);
   return queryAll(
-    supabase.from('appointments').select(select)
-      .in('barber_id', barbers.map((barber) => barber.id))
-      .order('date').order('time'),
+    builder.order('date').order('time'),
   );
 }
 
@@ -71,8 +75,9 @@ async function ownedAppointment(req, id) {
 }
 
 export async function wallet(req, res) {
-  const rows = await scopedAppointments(req);
-  res.json(rows.filter((row) => row.status === 'em_carteira'));
+  res.json(await scopedAppointments(req, {
+    filter: (builder) => builder.eq('status', 'em_carteira'),
+  }));
 }
 
 export async function walletAction(req, res) {
@@ -98,8 +103,9 @@ export async function walletAction(req, res) {
 }
 
 export async function pending(req, res) {
-  const rows = await scopedAppointments(req);
-  res.json(rows.filter((row) => openStatuses.includes(row.status) && row.date < today()));
+  res.json(await scopedAppointments(req, {
+    filter: (builder) => builder.in('status', openStatuses).lt('date', today()),
+  }));
 }
 
 export async function pendingAction(req, res) {
@@ -121,8 +127,15 @@ export async function pendingAction(req, res) {
 
 async function commissionRows(req, month) {
   const barbers = await scopedBarbers(req);
-  const appointments = await scopedAppointments(req);
-  const rows = appointments.filter((row) => paidStatuses.includes(row.status) && String(row.date).startsWith(month));
+  const monthStart = `${month}-01`;
+  const nextMonth = new Date(`${monthStart}T12:00:00Z`);
+  nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1);
+  const rows = await scopedAppointments(req, {
+    filter: (builder) => builder
+      .in('status', paidStatuses)
+      .gte('date', monthStart)
+      .lt('date', nextMonth.toISOString().slice(0, 10)),
+  });
   return barbers.map((barber) => {
     const done = rows.filter((row) => row.barber_id === barber.id);
     const gross = done.reduce((sum, row) => sum + Number(row.received_amount ?? row.services?.price ?? 0), 0);
@@ -133,11 +146,21 @@ async function commissionRows(req, month) {
 
 export async function commissions(req, res) {
   const month = String(req.query.month || today().slice(0, 7));
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    throw new HttpError(400, 'Mes invalido; use AAAA-MM');
+  }
   res.json(await commissionRows(req, month));
 }
 
 export async function retention(req, res) {
-  const rows = await scopedAppointments(req);
+  const rows = await scopedAppointments(req, {
+    filter: (builder) => builder.in('status', [
+      ...paidStatuses,
+      ...openStatuses,
+      'faltou',
+      'cancelado',
+    ]),
+  });
   const completed = rows.filter((item) =>
     paidStatuses.includes(item.status)
       && !isInternalPayment(item)
@@ -313,7 +336,12 @@ export async function cash(req, res) {
 async function cashSummary(req, month) {
   const { user } = req;
   if (!/^\d{4}-\d{2}$/.test(month)) throw new HttpError(400, 'Mes invalido; use AAAA-MM');
-  const rows = await scopedAppointments(req);
+  const rows = await scopedAppointments(req, {
+    filter: (builder) => builder.in(
+      'status',
+      [...paidStatuses, 'em_carteira'],
+    ),
+  });
   const paid = rows.filter((row) => paidStatuses.includes(row.status));
   const walletAmount = rows
     .filter((row) => row.status === 'em_carteira')
@@ -913,15 +941,20 @@ export async function deleteSelfClosure(req, res) {
 }
 
 export async function whatsapp(req, res) {
-  const rows = await scopedAppointments(req);
-  const walletRows = rows.filter((row) => row.status === 'em_carteira');
-  const todayRows = rows.filter((row) => openStatuses.includes(row.status) && row.date === today());
   const tomorrowDate = addDaysIso(today(), 1);
-  const tomorrowRows = rows.filter((row) =>
-    openStatuses.includes(row.status) && row.date === tomorrowDate);
+  const [walletRows, scheduleRows] = await Promise.all([
+    scopedAppointments(req, {
+      filter: (builder) => builder.eq('status', 'em_carteira'),
+    }),
+    scopedAppointments(req, {
+      filter: (builder) => builder
+        .in('status', openStatuses)
+        .in('date', [today(), tomorrowDate]),
+    }),
+  ]);
   res.json({
-    today: todayRows,
-    tomorrow: tomorrowRows,
+    today: scheduleRows.filter((row) => row.date === today()),
+    tomorrow: scheduleRows.filter((row) => row.date === tomorrowDate),
     wallet: walletRows,
   });
 }

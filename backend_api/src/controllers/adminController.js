@@ -7,47 +7,147 @@ import { makeCashPasswordHash } from '../services/cashPasswordPolicy.js';
 const barberColumns = 'id,name,login,phone,shop_name,shop_id,role,access_status,expires_at,activation_note,created_at';
 const settingFields = ['monthly_fee', 'due_day', 'subscription_status', 'payment_method', 'plan_started_at', 'plan_ends_at', 'last_payment_at', 'bonus_note', 'internal_note', 'multiunit_enabled'];
 const accountFields = ['name', 'login', 'phone', 'shop_name', 'role', 'access_status', 'expires_at', 'activation_note'];
+const defaultPageSize = 24;
+const maximumPageSize = 50;
+const summaryCacheDurationMs = 30000;
+let summaryCache;
 
 function flattenAccount(barber, settingsByBarber = new Map()) {
   return { ...barber, settings: settingsByBarber.get(barber.id) || null };
 }
 
-async function settingsMap() {
-  const { data, error } = await supabase.from('admin_account_settings').select('*');
+async function settingsMap(barberIds = []) {
+  let builder = supabase.from('admin_account_settings').select('*');
+  if (barberIds.length) builder = builder.in('barber_id', barberIds);
+  const { data, error } = await builder;
   // The old access-management view remains usable until the SQL migration is run.
   if (error?.code === '42P01') return new Map();
   if (error) throw new HttpError(400, error.message);
   return new Map((data || []).map((item) => [item.barber_id, item]));
 }
 
-async function cashSettingsMap() {
-  const { data, error } = await supabase.from('cash_access_settings')
-    .select('shop_id,shop_name,password_hash');
-  if (error?.code === '42P01') return new Map();
-  if (error) throw new HttpError(400, error.message);
-  return new Map((data || []).map((item) => [
+async function cashSettingsMap(barbers) {
+  const shopIds = [...new Set(barbers.map((item) => item.shop_id).filter(Boolean))];
+  const shopNames = [...new Set(barbers
+    .filter((item) => !item.shop_id)
+    .map((item) => String(item.shop_name || '').trim())
+    .filter(Boolean))];
+  const requests = [];
+  if (shopIds.length) {
+    requests.push(supabase.from('cash_access_settings')
+      .select('shop_id,shop_name,password_hash').in('shop_id', shopIds));
+  }
+  if (shopNames.length) {
+    requests.push(supabase.from('cash_access_settings')
+      .select('shop_id,shop_name,password_hash')
+      .is('shop_id', null).in('shop_name', shopNames));
+  }
+  if (!requests.length) return new Map();
+  const results = await Promise.all(requests);
+  const rows = [];
+  for (const result of results) {
+    if (result.error?.code === '42P01') return new Map();
+    if (result.error) throw new HttpError(400, result.error.message);
+    rows.push(...(result.data || []));
+  }
+  return new Map(rows.map((item) => [
     item.shop_id || `shop:${String(item.shop_name || '').trim().toLowerCase()}`,
     Boolean(item.password_hash),
   ]));
+}
+
+function positiveInteger(value, fallback, maximum = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  return Number.isFinite(parsed) && parsed > 0
+    ? Math.min(parsed, maximum)
+    : fallback;
+}
+
+function safeSearch(value) {
+  return String(value || '')
+    .trim()
+    .slice(0, 80)
+    .replace(/[^\p{L}\p{N}\s@-]/gu, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+async function countAccounts(status) {
+  let builder = supabase.from('barbers')
+    .select('id', { count: 'exact', head: true });
+  if (status) builder = builder.eq('access_status', status);
+  const { count, error } = await builder;
+  if (error) throw new HttpError(400, error.message);
+  return count || 0;
+}
+
+async function accountSummary() {
+  if (summaryCache?.expiresAt > Date.now()) return summaryCache.value;
+  const [total, active, pending, blocked] = await Promise.all([
+    countAccounts(),
+    countAccounts('ativo'),
+    countAccounts('pendente'),
+    countAccounts('bloqueado'),
+  ]);
+  const value = { total, active, pending, blocked };
+  summaryCache = {
+    value,
+    expiresAt: Date.now() + summaryCacheDurationMs,
+  };
+  return value;
+}
+
+function invalidateSummary() {
+  summaryCache = undefined;
 }
 
 function pick(source, fields) {
   return Object.fromEntries(Object.entries(source || {}).filter(([key]) => fields.includes(key)));
 }
 
-export async function listShops(_req, res) {
-  const [barbers, settings, cashSettings] = await Promise.all([
-    query(supabase.from('barbers').select(barberColumns).order('created_at', { ascending: false })),
-    settingsMap(),
-    cashSettingsMap(),
+export async function listShops(req, res) {
+  const page = positiveInteger(req.query.page, 1);
+  const pageSize = positiveInteger(
+    req.query.pageSize,
+    defaultPageSize,
+    maximumPageSize,
+  );
+  const search = safeSearch(req.query.search);
+  const offset = (page - 1) * pageSize;
+  let builder = supabase.from('barbers')
+    .select(barberColumns, { count: 'exact' })
+    .order('created_at', { ascending: false });
+  if (search) {
+    builder = builder.or(
+      `name.ilike.%${search}%,shop_name.ilike.%${search}%,login.ilike.%${search}%`,
+    );
+  }
+  const [pageResult, summary] = await Promise.all([
+    builder.range(offset, offset + pageSize - 1),
+    accountSummary(),
   ]);
-  res.json(barbers.map((barber) => ({
+  if (pageResult.error) throw new HttpError(400, pageResult.error.message);
+  const barbers = pageResult.data || [];
+  const [settings, cashSettings] = await Promise.all([
+    settingsMap(barbers.map((barber) => barber.id)),
+    cashSettingsMap(barbers),
+  ]);
+  const items = barbers.map((barber) => ({
     ...flattenAccount(barber, settings),
     cashPasswordConfigured: cashSettings.get(
       barber.shop_id
         || `shop:${String(barber.shop_name || '').trim().toLowerCase()}`,
     ) === true,
-  })));
+  }));
+  const filteredTotal = pageResult.count || 0;
+  res.json({
+    items,
+    page,
+    pageSize,
+    filteredTotal,
+    totalPages: Math.max(1, Math.ceil(filteredTotal / pageSize)),
+    hasNext: offset + items.length < filteredTotal,
+    summary,
+  });
 }
 
 export async function updateAccess(req, res) {
@@ -63,7 +163,8 @@ export async function updateAccess(req, res) {
     throw new HttpError(400, 'A validade deve usar o formato AAAA-MM-DD');
   }
   const updated = await query(supabase.from('barbers').update(patch).eq('id', req.params.id).select(barberColumns).single());
-  res.json(flattenAccount(updated, await settingsMap()));
+  invalidateSummary();
+  res.json(flattenAccount(updated, await settingsMap([updated.id])));
 }
 
 export async function resetPassword(req, res) {
@@ -86,7 +187,8 @@ export async function createAccount(req, res) {
   }).select(barberColumns).single());
   const settings = pick(req.body, settingFields);
   if (Object.keys(settings).length) await query(supabase.from('admin_account_settings').upsert({ barber_id: account.id, ...settings }));
-  res.status(201).json(flattenAccount(account, await settingsMap()));
+  invalidateSummary();
+  res.status(201).json(flattenAccount(account, await settingsMap([account.id])));
 }
 
 export async function updateSettings(req, res) {
@@ -95,7 +197,7 @@ export async function updateSettings(req, res) {
   if (!Object.keys(settings).length) throw new HttpError(400, 'Nenhuma configuracao valida informada');
   await query(supabase.from('admin_account_settings').upsert({ barber_id: req.params.id, ...settings }));
   const account = await one(supabase.from('barbers').select(barberColumns).eq('id', req.params.id), 'Barbearia nao encontrada');
-  res.json(flattenAccount(account, await settingsMap()));
+  res.json(flattenAccount(account, await settingsMap([account.id])));
 }
 
 export async function markPaid(req, res) {
@@ -146,5 +248,6 @@ export async function deleteAccount(req, res) {
     access_status: 'bloqueado',
     activation_note: 'Conta desativada pelo administrador',
   }).eq('id', req.params.id));
+  invalidateSummary();
   res.status(204).end();
 }

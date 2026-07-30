@@ -4,8 +4,18 @@ class AdminRemoteDataSource {
   const AdminRemoteDataSource(this._api);
   final ApiClient _api;
 
-  Future<List<Map<String, dynamic>>> listShops() async =>
-      List<Map<String, dynamic>>.from(await _api.get('/admin/barbers') as List);
+  Future<Map<String, dynamic>> listShops({
+    int page = 1,
+    int pageSize = 24,
+    String search = '',
+  }) async =>
+      Map<String, dynamic>.from(
+        await _api.get('/admin/barbers', query: {
+          'page': '$page',
+          'pageSize': '$pageSize',
+          if (search.trim().isNotEmpty) 'search': search.trim(),
+        }) as Map,
+      );
 
   Future<Map<String, dynamic>> updateAccess(
     String barberId,

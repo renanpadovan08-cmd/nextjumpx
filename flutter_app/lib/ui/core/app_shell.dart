@@ -40,6 +40,7 @@ class _AppShellState extends State<AppShell> {
   bool suporteOpen = false;
   List<Map<String, dynamic>> _unitOptions = const [];
   String _activeUnitId = 'all';
+  final Set<int> _mountedPages = {};
 
   late final teamBarbers = BarbersFactory.viewModel();
   late final DashboardScreen dashboard;
@@ -115,8 +116,9 @@ class _AppShellState extends State<AppShell> {
       canManage: widget.app.user!.isManager,
       onNavigate: _navigate,
     );
-    _loadUnits();
     if (widget.app.user!.isAdmin) index = 19;
+    _mountedPages.add(index);
+    _loadUnits();
   }
 
   String get _activeUnitStorageKey =>
@@ -162,31 +164,50 @@ class _AppShellState extends State<AppShell> {
     if (mounted) _navigate(index);
   }
 
-  List<Widget> get screens => [
-        dashboard,
-        agenda,
-        wallet,
-        fixedClients,
-        publicBooking,
-        whatsapp,
-        operations,
-        pending,
-        reports,
-        commissions,
-        retention,
-        cash,
-        barbers,
-        catalog,
-        profile,
-        hours,
-        support,
-        units,
-        updates,
-        if (widget.app.user!.isAdmin) admin,
-      ];
+  int get _screenCount => widget.app.user!.isAdmin ? 20 : 19;
+
+  Widget _screenFor(int page) => switch (page) {
+        0 => dashboard,
+        1 => agenda,
+        2 => wallet,
+        3 => fixedClients,
+        4 => publicBooking,
+        5 => whatsapp,
+        6 => operations,
+        7 => pending,
+        8 => reports,
+        9 => commissions,
+        10 => retention,
+        11 => cash,
+        12 => barbers,
+        13 => catalog,
+        14 => profile,
+        15 => hours,
+        16 => support,
+        17 => units,
+        18 => updates,
+        19 when widget.app.user!.isAdmin => admin,
+        _ => const SizedBox.shrink(),
+      };
+
+  List<Widget> get screens => List.generate(
+        _screenCount,
+        (page) => _mountedPages.contains(page)
+            ? KeyedSubtree(
+                key: ValueKey('zenbarber-page-$page'),
+                child: _screenFor(page),
+              )
+            : const SizedBox.shrink(),
+        growable: false,
+      );
 
   void _navigate(int page) {
+    if (page < 0 || page >= _screenCount) return;
+    final firstVisit = _mountedPages.add(page);
     setState(() => index = page);
+    // Every screen performs its own initial load in initState. Avoid issuing
+    // the same request twice when the module is opened for the first time.
+    if (firstVisit) return;
     switch (page) {
       case 0:
         dashboard.viewModel.load();

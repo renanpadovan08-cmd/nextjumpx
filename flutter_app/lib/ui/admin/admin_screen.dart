@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,6 +17,8 @@ class AdminScreen extends StatefulWidget {
 
 class _AdminScreenState extends State<AdminScreen> {
   String filter = '';
+  final ScrollController _scrollController = ScrollController();
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -30,6 +34,8 @@ class _AdminScreenState extends State<AdminScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _scrollController.dispose();
     widget.viewModel.removeListener(_refresh);
     super.dispose();
   }
@@ -61,10 +67,39 @@ class _AdminScreenState extends State<AdminScreen> {
   String _money(double value) =>
       'R\$ ${value.toStringAsFixed(2).replaceAll('.', ',')}';
 
+  int _summary(String key) {
+    final value = widget.viewModel.summary[key];
+    return value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+  }
+
+  void _search(String value) {
+    setState(() => filter = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      widget.viewModel.searchFor(value);
+    });
+  }
+
+  Future<void> _changePage(bool next) async {
+    if (next) {
+      await widget.viewModel.nextPage();
+    } else {
+      await widget.viewModel.previousPage();
+    }
+    if (mounted && _scrollController.hasClients) {
+      await _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) => RefreshIndicator(
-        onRefresh: widget.viewModel.load,
+        onRefresh: () => widget.viewModel.load(targetPage: 1),
         child: ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(32, 26, 32, 92),
           children: [
             const Text('Gestao PRO',
@@ -78,21 +113,26 @@ class _AdminScreenState extends State<AdminScreen> {
                 style: TextStyle(color: ZenColors.muted)),
             const SizedBox(height: 16),
             Wrap(spacing: 12, runSpacing: 12, children: [
-              _metric('Cadastros', '${widget.viewModel.items.length}',
-                  ZenColors.sky),
+              _metric('Cadastros', '${_summary('total')}', ZenColors.sky),
               _metric(
                   'Ativos',
-                  '${widget.viewModel.items.where((item) => item['access_status'] == 'ativo').length}',
+                  '${_summary('active')}',
                   ZenColors.green),
               _metric(
                   'Pendentes',
-                  '${widget.viewModel.items.where((item) => item['access_status'] == 'pendente').length}',
+                  '${_summary('pending')}',
                   const Color(0xfff0bd45)),
               _metric(
                   'Bloqueados',
-                  '${widget.viewModel.items.where((item) => item['access_status'] == 'bloqueado').length}',
+                  '${_summary('blocked')}',
                   const Color(0xffee7474)),
-              _metric('MRR', _money(_mrr), const Color(0xffb79cff)),
+              _metric(
+                widget.viewModel.filteredTotal > widget.viewModel.items.length
+                    ? 'MRR da pagina'
+                    : 'MRR',
+                _money(_mrr),
+                const Color(0xffb79cff),
+              ),
             ]),
             const SizedBox(height: 16),
             ZenCard(
@@ -112,12 +152,13 @@ class _AdminScreenState extends State<AdminScreen> {
                       style: TextStyle(color: ZenColors.muted)),
                   const SizedBox(height: 16),
                   TextField(
-                      onChanged: (value) => setState(() => filter = value),
+                      onChanged: _search,
                       decoration: const InputDecoration(
                           prefixIcon: Icon(Icons.search_rounded),
                           hintText: 'Buscar barbearia, responsavel ou login')),
                   const SizedBox(height: 12),
-                  if (widget.viewModel.loading)
+                  if (widget.viewModel.loading &&
+                      widget.viewModel.items.isEmpty)
                     const Center(
                         child: Padding(
                             padding: EdgeInsets.all(24),
@@ -131,13 +172,56 @@ class _AdminScreenState extends State<AdminScreen> {
                             child: Text('Nenhum cadastro encontrado.',
                                 style: TextStyle(color: ZenColors.muted))))
                   else
-                    ..._items.map(_account),
+                    ...[
+                      ..._items.map(_account),
+                      const SizedBox(height: 14),
+                      _pagination(),
+                    ],
                 ])),
             const SizedBox(height: 16),
             _unitRequestsCard(),
           ],
         ),
       );
+
+  Widget _pagination() {
+    final viewModel = widget.viewModel;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Expanded(
+          child: Text(
+            viewModel.filteredTotal == 0
+                ? 'Nenhum resultado'
+                : 'Pagina ${viewModel.page} de ${viewModel.totalPages} '
+                    '(${viewModel.filteredTotal} registros)',
+            style: const TextStyle(color: ZenColors.muted, fontSize: 12),
+          ),
+        ),
+        const SizedBox(width: 10),
+        IconButton.outlined(
+          tooltip: 'Pagina anterior',
+          onPressed: !viewModel.loading && viewModel.page > 1
+              ? () => _changePage(false)
+              : null,
+          icon: const Icon(Icons.chevron_left_rounded),
+        ),
+        const SizedBox(width: 8),
+        IconButton.outlined(
+          tooltip: 'Proxima pagina',
+          onPressed: !viewModel.loading && viewModel.hasNext
+              ? () => _changePage(true)
+              : null,
+          icon: viewModel.loading
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chevron_right_rounded),
+        ),
+      ],
+    );
+  }
 
   Widget _account(Map<String, dynamic> item) {
     final status = '${item['access_status'] ?? 'pendente'}';

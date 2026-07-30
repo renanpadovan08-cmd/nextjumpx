@@ -10,7 +10,12 @@ function isMissingTableError(error) {
 }
 
 export async function list(req, res) {
-  const builder = supabase.from('unit_requests').select('*').order('created_at', { ascending: false });
+  const requestedLimit = Number.parseInt(String(req.query.limit || ''), 10);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(Math.max(requestedLimit, 1), 200)
+    : 100;
+  const builder = supabase.from('unit_requests').select('*')
+    .order('created_at', { ascending: false }).limit(limit);
   if (!isAdminRole(req.user.role)) builder.eq('manager_id', req.user.id);
   try {
     res.json(await query(builder));
@@ -120,7 +125,7 @@ export async function configuration(req, res) {
     new Map(assignments.map((item) => [item.barber_id, item.unit_id]));
 
   let requestsBuilder = supabase.from('unit_requests').select('*')
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false }).limit(100);
   if (req.user.shopId) requestsBuilder = requestsBuilder.eq('shop_id', req.user.shopId);
   else requestsBuilder = requestsBuilder.eq('shop_name', req.user.shopName);
   const { data: requests, error: requestError } = await requestsBuilder;

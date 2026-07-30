@@ -6,7 +6,12 @@ class AdminRepositoryImpl implements IAdminRepository {
   final AdminRemoteDataSource _source;
 
   @override
-  Future<List<Map<String, dynamic>>> listShops() => _source.listShops();
+  Future<Map<String, dynamic>> listShops({
+    int page = 1,
+    int pageSize = 24,
+    String search = '',
+  }) =>
+      _source.listShops(page: page, pageSize: pageSize, search: search);
 
   @override
   Future<Map<String, dynamic>> updateAccess(
