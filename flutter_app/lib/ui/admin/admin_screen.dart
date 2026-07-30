@@ -290,6 +290,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         : () => _change(item, {'access_status': 'ativo'}),
                     danger: status == 'ativo',
                     green: status != 'ativo'),
+                _button('Editar perfil', () => _editProfileDialog(item)),
                 _button('Plano', () => _planDialog(item)),
                 _button('Cobranca', () => _billingMessage(item)),
                 _button('Pago', () => _markPaid(item), green: true),
@@ -298,7 +299,8 @@ class _AdminScreenState extends State<AdminScreen> {
                 _button('Nova senha', () => _passwordDialog(item)),
                 _button('Senha do caixa', () => _cashPasswordDialog(item),
                     green: item['cashPasswordConfigured'] != true),
-                _button('Desativar', () => _deleteDialog(item), danger: true),
+                _button('Excluir perfil', () => _deleteDialog(item),
+                    danger: true),
               ]));
 
   Widget _unitRequestsCard() => ZenCard(
@@ -478,6 +480,66 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
+  Future<void> _editProfileDialog(Map<String, dynamic> item) async {
+    final name = TextEditingController(text: '${item['name'] ?? ''}');
+    final shop = TextEditingController(text: '${item['shop_name'] ?? ''}');
+    final login = TextEditingController(text: '${item['login'] ?? ''}');
+    final phone = TextEditingController(text: '${item['phone'] ?? ''}');
+    final data = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Editar perfil'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _field(name, 'Responsavel'),
+              _field(shop, 'Barbearia'),
+              _field(login, 'Login'),
+              _field(phone, 'Telefone'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (name.text.trim().isEmpty ||
+                  shop.text.trim().isEmpty ||
+                  login.text.trim().isEmpty) {
+                _snack('Responsavel, barbearia e login sao obrigatorios.');
+                return;
+              }
+              Navigator.pop(context, {
+                'name': name.text.trim(),
+                'shop_name': shop.text.trim(),
+                'login': login.text.trim().toLowerCase(),
+                'phone': phone.text.trim(),
+              });
+            },
+            child: const Text('Salvar alteracoes'),
+          ),
+        ],
+      ),
+    );
+    name.dispose();
+    shop.dispose();
+    login.dispose();
+    phone.dispose();
+    if (data == null) return;
+    final ok = await widget.viewModel.updateAccess('${item['id']}', data);
+    if (mounted) {
+      _snack(
+        ok
+            ? 'Perfil atualizado.'
+            : 'Nao foi possivel atualizar o perfil. Confira se o login ja existe.',
+      );
+    }
+  }
+
   Future<void> _planDialog(Map<String, dynamic> item) async {
     final settings = _settings(item);
     final fee = TextEditingController(text: '${settings['monthly_fee'] ?? 0}');
@@ -573,28 +635,59 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Future<void> _deleteDialog(Map<String, dynamic> item) async {
+    final login = '${item['login'] ?? ''}';
+    final confirmation = TextEditingController();
     final confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-                title: const Text('Desativar barbearia?'),
-                content: Text(
-                    'A conta ${item['shop_name'] ?? ''} será bloqueada sem apagar agenda, caixa ou histórico.'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Cancelar')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      style: FilledButton.styleFrom(
-                          backgroundColor: ZenColors.red),
-                      child: const Text('Desativar'))
-                ]));
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialog) => AlertDialog(
+          title: const Text('Excluir perfil?'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'O perfil ${item['name'] ?? ''} sera removido da Gestao PRO '
+                  'e perdera o acesso. Agenda, caixa e historico serao '
+                  'preservados.',
+                ),
+                const SizedBox(height: 14),
+                Text('Digite $login para confirmar.'),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: confirmation,
+                  autofocus: true,
+                  onChanged: (_) => setDialog(() {}),
+                  decoration:
+                      const InputDecoration(labelText: 'Login do perfil'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: confirmation.text.trim() == login
+                  ? () => Navigator.pop(context, true)
+                  : null,
+              style: FilledButton.styleFrom(backgroundColor: ZenColors.red),
+              child: const Text('Excluir perfil'),
+            ),
+          ],
+        ),
+      ),
+    );
+    confirmation.dispose();
     if (confirm != true) return;
     final ok = await widget.viewModel.deleteAccount('${item['id']}');
     if (mounted) {
       _snack(ok
-          ? 'Barbearia desativada.'
-          : 'Nao foi possivel desativar a barbearia.');
+          ? 'Perfil excluido com seguranca.'
+          : 'Nao foi possivel excluir o perfil.');
     }
   }
 

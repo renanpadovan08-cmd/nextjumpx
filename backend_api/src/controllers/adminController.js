@@ -75,6 +75,7 @@ async function countAccounts(status) {
   let builder = supabase.from('barbers')
     .select('id', { count: 'exact', head: true });
   if (status) builder = builder.eq('access_status', status);
+  else builder = builder.neq('access_status', 'excluido');
   const { count, error } = await builder;
   if (error) throw new HttpError(400, error.message);
   return count || 0;
@@ -115,6 +116,7 @@ export async function listShops(req, res) {
   const offset = (page - 1) * pageSize;
   let builder = supabase.from('barbers')
     .select(barberColumns, { count: 'exact' })
+    .neq('access_status', 'excluido')
     .order('created_at', { ascending: false });
   if (search) {
     builder = builder.or(
@@ -153,6 +155,18 @@ export async function listShops(req, res) {
 export async function updateAccess(req, res) {
   const patch = pick(req.body, accountFields);
   if (!Object.keys(patch).length) throw new HttpError(400, 'Nenhuma alteracao valida informada');
+  for (const field of ['name', 'login', 'shop_name']) {
+    if (field in patch && !String(patch[field] || '').trim()) {
+      const label = field === 'shop_name'
+        ? 'Barbearia'
+        : field === 'name' ? 'Nome' : 'Login';
+      throw new HttpError(400, `${label} e obrigatorio`);
+    }
+  }
+  if ('name' in patch) patch.name = String(patch.name).trim();
+  if ('login' in patch) patch.login = String(patch.login).trim().toLowerCase();
+  if ('phone' in patch) patch.phone = String(patch.phone || '').trim();
+  if ('shop_name' in patch) patch.shop_name = String(patch.shop_name).trim();
   if (patch.access_status && !['ativo', 'pendente', 'bloqueado', 'rejeitado', 'aguardando_pagamento'].includes(patch.access_status)) {
     throw new HttpError(400, 'Status de acesso invalido');
   }
@@ -243,10 +257,21 @@ export async function setCashPassword(req, res) {
 }
 
 export async function deleteAccount(req, res) {
-  await one(supabase.from('barbers').select('id').eq('id', req.params.id), 'Barbearia nao encontrada');
+  if (req.params.id === req.user.id) {
+    throw new HttpError(400, 'O administrador nao pode excluir o proprio perfil');
+  }
+  const account = await one(
+    supabase.from('barbers').select('id,login').eq('id', req.params.id),
+    'Perfil nao encontrado',
+  );
+  const deletedAt = new Date().toISOString();
   await query(supabase.from('barbers').update({
-    access_status: 'bloqueado',
-    activation_note: 'Conta desativada pelo administrador',
+    login: `excluido_${account.id}_${Date.now()}`,
+    password: null,
+    password_hash: null,
+    access_status: 'excluido',
+    activation_note:
+      `Perfil excluido pelo administrador em ${deletedAt}. Login anterior: ${account.login}`,
   }).eq('id', req.params.id));
   invalidateSummary();
   res.status(204).end();

@@ -237,14 +237,7 @@ class AdminViewModel extends ChangeNotifier {
   Future<bool> deleteAccount(String id) async {
     try {
       await _repository.deleteAccount(id);
-      final index = items.indexWhere((item) => '${item['id']}' == id);
-      if (index >= 0) {
-        final previousStatus = '${items[index]['access_status'] ?? ''}';
-        items[index] = {...items[index], 'access_status': 'bloqueado'};
-        _adjustStatusCount(previousStatus, 'bloqueado');
-      }
-      error = null;
-      notifyListeners();
+      await load(targetPage: 1, searchQuery: search);
       return true;
     } catch (exception) {
       error = '$exception';

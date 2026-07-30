@@ -4,11 +4,12 @@ import 'package:zenbarber/ui/admin/view_models/admin_view_model.dart';
 
 class _AdminRepositoryFake implements IAdminRepository {
   final List<int> requestedPages = [];
+  final List<String> deletedIds = [];
 
   @override
   Future<Map<String, dynamic>> listShops({
     int page = 1,
-    int pageSize = 24,
+    int pageSize = 10,
     String search = '',
   }) async {
     requestedPages.add(page);
@@ -38,6 +39,11 @@ class _AdminRepositoryFake implements IAdminRepository {
   Future<List<Map<String, dynamic>>> listUnitRequests() async => const [];
 
   @override
+  Future<void> deleteAccount(String barberId) async {
+    deletedIds.add(barberId);
+  }
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
@@ -57,5 +63,19 @@ void main() {
     expect(viewModel.items.map((item) => item['id']), ['shop-1', 'shop-2']);
     expect(viewModel.hasNext, isFalse);
     expect(repository.requestedPages, [1, 2]);
+  });
+
+  test('admin exclui o perfil e recarrega a primeira pagina', () async {
+    final repository = _AdminRepositoryFake();
+    final viewModel = AdminViewModel(repository);
+
+    await viewModel.load();
+    await viewModel.nextPage();
+    final deleted = await viewModel.deleteAccount('shop-1');
+
+    expect(deleted, isTrue);
+    expect(repository.deletedIds, ['shop-1']);
+    expect(repository.requestedPages, [1, 2, 1]);
+    expect(viewModel.page, 1);
   });
 }
