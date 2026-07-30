@@ -9,6 +9,7 @@ import {
 } from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
 import { filterBarbersBySelectedUnit } from '../services/unitScopeService.js';
+import { validateWeeklyScheduleValue } from '../services/schedulePolicy.js';
 
 const columns = 'id,name,login,phone,shop_name,shop_id,role,photo_url,background_url,work_start,work_end,lunch_start,lunch_end,off_days,commission_rate,access_status,expires_at,created_at,activation_note,must_change_password';
 
@@ -44,7 +45,7 @@ export async function updateBarber(req, res) {
   const current = await one(supabase.from('barbers').select('*').eq('id', req.params.id), 'Barbeiro nao encontrado');
   assertShopAccess(req.user, current);
   if (isRestrictedBarber(req.user) && current.id !== req.user.id) throw new HttpError(403, 'Sem permissao para alterar este perfil');
-  const aliases = { photoUrl: 'photo_url', backgroundUrl: 'background_url', workStart: 'work_start', workEnd: 'work_end', offDays: 'off_days', commissionRate: 'commission_rate' };
+  const aliases = { photoUrl: 'photo_url', backgroundUrl: 'background_url', workStart: 'work_start', workEnd: 'work_end', breakStart: 'lunch_start', breakEnd: 'lunch_end', offDays: 'off_days', commissionRate: 'commission_rate' };
   const allowed = [
     'name',
     'phone',
@@ -52,6 +53,8 @@ export async function updateBarber(req, res) {
     'background_url',
     'work_start',
     'work_end',
+    'lunch_start',
+    'lunch_end',
     'off_days',
     'commission_rate',
     ...(canManageShop(req.user) ? ['login', 'role', 'password'] : []),
@@ -93,9 +96,23 @@ export async function updateBarber(req, res) {
     }
   }
   if (patch.commission_rate != null && (!Number.isFinite(Number(patch.commission_rate)) || Number(patch.commission_rate) < 0 || Number(patch.commission_rate) > 100)) throw new HttpError(400, 'Comissao deve estar entre 0 e 100');
-  const validTime = (value) => value == null || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value));
-  if (!validTime(patch.work_start) || !validTime(patch.work_end)) throw new HttpError(400, 'Horario invalido; use HH:MM');
+  const validTime = (value) =>
+    value == null
+      || value === ''
+      || /^([01]\d|2[0-3]):[0-5]\d$/.test(String(value));
+  if (![patch.work_start, patch.work_end, patch.lunch_start, patch.lunch_end].every(validTime)) throw new HttpError(400, 'Horario invalido; use HH:MM');
   if (patch.work_start && patch.work_end && patch.work_start >= patch.work_end) throw new HttpError(400, 'O fim do expediente deve ser posterior ao inicio');
+  if (Boolean(patch.lunch_start) !== Boolean(patch.lunch_end)) {
+    throw new HttpError(400, 'Informe o inicio e o fim da pausa');
+  }
+  if (patch.lunch_start && patch.lunch_end
+      && (patch.lunch_start >= patch.lunch_end
+        || (patch.work_start && patch.lunch_start < patch.work_start)
+        || (patch.work_end && patch.lunch_end > patch.work_end))) {
+    throw new HttpError(400, 'A pausa deve ficar dentro do expediente');
+  }
+  const scheduleError = validateWeeklyScheduleValue(patch.off_days);
+  if (scheduleError) throw new HttpError(400, scheduleError);
   if (!Object.keys(patch).length) throw new HttpError(400, 'Nenhuma alteracao valida informada');
   res.json(sanitizeBarber(await query(supabase.from('barbers').update(patch).eq('id', current.id).select(columns).single())));
 }

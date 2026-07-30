@@ -856,12 +856,50 @@ class _AgendaScreenState extends State<AgendaScreen> {
       return (parts.first ?? 0) * 60 + (parts.length > 1 ? parts[1] ?? 0 : 0);
     }
 
-    final start = minutes(selected.workStart);
-    final end = minutes(selected.workEnd);
+    final dayIndex =
+        (DateTime.tryParse(widget.viewModel.selectedDate)?.weekday ?? 7) % 7;
+    var open = true;
+    var workStart = selected.workStart;
+    var workEnd = selected.workEnd;
+    var lunchStart = selected.lunchStart;
+    var lunchEnd = selected.lunchEnd;
+    final rawSchedule = selected.offDays;
+    if (rawSchedule.startsWith('SCHEDULE_JSON:')) {
+      try {
+        final parsed =
+            jsonDecode(rawSchedule.substring('SCHEDULE_JSON:'.length));
+        if (parsed is List && dayIndex < parsed.length) {
+          final day = Map<String, dynamic>.from(parsed[dayIndex] as Map);
+          open = day['open'] == true;
+          workStart = '${day['start'] ?? workStart}';
+          workEnd = '${day['end'] ?? workEnd}';
+          lunchStart = '${day['break_start'] ?? lunchStart}';
+          lunchEnd = '${day['break_end'] ?? lunchEnd}';
+        }
+      } catch (_) {
+        // Mantém os campos simples quando uma configuração antiga é inválida.
+      }
+    } else {
+      open = !rawSchedule
+          .split(',')
+          .map((value) => value.trim())
+          .contains('$dayIndex');
+    }
+    if (!open) return const SizedBox.shrink();
+    final start = minutes(workStart);
+    final end = minutes(workEnd);
+    final breakStart = lunchStart.isEmpty ? -1 : minutes(lunchStart);
+    final breakEnd = lunchEnd.isEmpty ? -1 : minutes(lunchEnd);
     final slots = <String>[];
     for (var value = start; value + 30 <= end; value += 30) {
       final time =
           '${(value ~/ 60).toString().padLeft(2, '0')}:${(value % 60).toString().padLeft(2, '0')}';
+      if (breakStart >= 0 &&
+          breakEnd >= 0 &&
+          value < breakEnd &&
+          value + 30 > breakStart) {
+        continue;
+      }
       if (_slotAvailable(time, 30)) slots.add(time);
     }
     if (slots.isEmpty) return const SizedBox.shrink();

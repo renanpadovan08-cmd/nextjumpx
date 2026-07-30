@@ -63,6 +63,8 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
   Timer? _supportRefreshTimer;
   String _activeFilter = 'Todos';
   List<Map<String, dynamic>>? _weeklySchedule;
+  String? _selectedHoursBarberId;
+  String? _hoursScheduleSignature;
   late final WhatsappTemplateStore _templateStore;
   late Map<String, String> _whatsTemplates;
 
@@ -1421,7 +1423,28 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           ]);
 
   Widget _hours() {
-    _weeklySchedule ??= _decodeWeeklySchedule();
+    final barbers = List<Map<String, dynamic>>.from(
+      (_object['barbers'] as List?) ?? const [],
+    );
+    final preferredId = _selectedHoursBarberId ?? '${_object['id'] ?? ''}';
+    final selected = barbers.firstWhere(
+      (barber) => '${barber['id']}' == preferredId,
+      orElse: () => barbers.isEmpty ? _object : barbers.first,
+    );
+    _selectedHoursBarberId = '${selected['id'] ?? ''}';
+    final scheduleSignature = [
+      _selectedHoursBarberId,
+      selected['work_start'],
+      selected['work_end'],
+      selected['lunch_start'],
+      selected['lunch_end'],
+      selected['off_days'],
+    ].join('|');
+    if (_weeklySchedule == null ||
+        _hoursScheduleSignature != scheduleSignature) {
+      _weeklySchedule = _decodeWeeklySchedule(selected);
+      _hoursScheduleSignature = scheduleSignature;
+    }
     const names = [
       'Domingo',
       'Segunda',
@@ -1435,6 +1458,38 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
       'Funcionamento inteligente',
       'Defina expediente e pausa de cada dia; agenda e link público usam esta configuração.',
       [
+        if (barbers.isNotEmpty) ...[
+          DropdownButtonFormField<String>(
+            initialValue: _selectedHoursBarberId,
+            decoration: const InputDecoration(
+              labelText: 'Profissional',
+              prefixIcon: Icon(Icons.person_outline_rounded),
+            ),
+            items: barbers
+                .map(
+                  (barber) => DropdownMenuItem(
+                    value: '${barber['id']}',
+                    child: Text('${barber['name'] ?? 'Profissional'}'),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) {
+              if (value == null || value == _selectedHoursBarberId) return;
+              setState(() {
+                _selectedHoursBarberId = value;
+                _weeklySchedule = null;
+                _hoursScheduleSignature = null;
+              });
+            },
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Os horários abaixo serão aplicados somente a '
+            '${selected['name'] ?? 'este profissional'}.',
+            style: const TextStyle(color: ZenColors.muted, fontSize: 12),
+          ),
+          const SizedBox(height: 14),
+        ],
         for (var index = 0; index < names.length; index++)
           Container(
             margin: const EdgeInsets.only(bottom: 10),
@@ -1530,8 +1585,10 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     );
   }
 
-  List<Map<String, dynamic>> _decodeWeeklySchedule() {
-    final raw = '${_object['off_days'] ?? ''}';
+  List<Map<String, dynamic>> _decodeWeeklySchedule(
+    Map<String, dynamic> profile,
+  ) {
+    final raw = '${profile['off_days'] ?? ''}';
     final legacyClosed = raw.split(',').map((value) => value.trim()).toSet();
     List<dynamic>? parsed;
     if (raw.startsWith('SCHEDULE_JSON:')) {
@@ -1549,10 +1606,10 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
               : <String, dynamic>{};
       return {
         'open': current['open'] ?? !legacyClosed.contains('$index'),
-        'start': current['start'] ?? _object['work_start'] ?? '09:00',
-        'end': current['end'] ?? _object['work_end'] ?? '19:00',
-        'break_start': current['break_start'] ?? '',
-        'break_end': current['break_end'] ?? '',
+        'start': current['start'] ?? profile['work_start'] ?? '09:00',
+        'end': current['end'] ?? profile['work_end'] ?? '19:00',
+        'break_start': current['break_start'] ?? profile['lunch_start'] ?? '',
+        'break_end': current['break_end'] ?? profile['lunch_end'] ?? '',
       };
     });
   }
@@ -1574,8 +1631,11 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
       orElse: () => {'start': '09:00', 'end': '19:00'},
     );
     final ok = await widget.viewModel.saveCurrent(ProModule.hours, {
+      'barberId': _selectedHoursBarberId,
       'workStart': firstOpen['start'],
       'workEnd': firstOpen['end'],
+      'breakStart': firstOpen['break_start'] ?? '',
+      'breakEnd': firstOpen['break_end'] ?? '',
       'offDays': 'SCHEDULE_JSON:${jsonEncode(_weeklySchedule)}',
     });
     if (mounted) {

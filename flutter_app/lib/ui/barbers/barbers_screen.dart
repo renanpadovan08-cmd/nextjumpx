@@ -207,6 +207,8 @@ class _BarbersScreenState extends State<BarbersScreen> {
         TextEditingController(text: barber.commissionRate.toString());
     final workStart = TextEditingController(text: barber.workStart);
     final workEnd = TextEditingController(text: barber.workEnd);
+    final lunchStart = TextEditingController(text: barber.lunchStart);
+    final lunchEnd = TextEditingController(text: barber.lunchEnd);
     final offDays = TextEditingController(text: barber.offDays);
     final photoUrl = TextEditingController(text: barber.photoUrl);
     var role = ['gerente', 'manager', 'owner'].contains(barber.role)
@@ -264,6 +266,8 @@ class _BarbersScreenState extends State<BarbersScreen> {
                   _field(commission, 'Comissão (%)', number: true),
                 _field(workStart, 'Início do expediente'),
                 _field(workEnd, 'Fim do expediente'),
+                _field(lunchStart, 'Início da pausa / almoço'),
+                _field(lunchEnd, 'Fim da pausa / almoço'),
                 _field(offDays, 'Folgas (0=dom, 1=seg...)'),
                 const SizedBox(height: 4),
                 CircleAvatar(
@@ -350,6 +354,8 @@ class _BarbersScreenState extends State<BarbersScreen> {
               'commission': commission.text.trim(),
               'workStart': workStart.text.trim(),
               'workEnd': workEnd.text.trim(),
+              'breakStart': lunchStart.text.trim(),
+              'breakEnd': lunchEnd.text.trim(),
               'offDays': offDays.text.trim(),
               'photoUrl': photoUrl.text.trim(),
             }),
@@ -365,6 +371,8 @@ class _BarbersScreenState extends State<BarbersScreen> {
     commission.dispose();
     workStart.dispose();
     workEnd.dispose();
+    lunchStart.dispose();
+    lunchEnd.dispose();
     offDays.dispose();
     photoUrl.dispose();
     if (data == null || (data['name'] ?? '').isEmpty) return;
@@ -395,6 +403,8 @@ class _BarbersScreenState extends State<BarbersScreen> {
               barber.commissionRate,
         'workStart': data['workStart'],
         'workEnd': data['workEnd'],
+        'breakStart': data['breakStart'],
+        'breakEnd': data['breakEnd'],
         'offDays': data['offDays'],
         'photoUrl': resolvedPhotoUrl,
       });

@@ -5,6 +5,7 @@ import {
   businessNow,
   intervalsOverlap,
   scheduleForDate,
+  validateWeeklyScheduleValue,
   validateSlot,
   weeklySchedule,
 } from '../src/services/schedulePolicy.js';
@@ -46,6 +47,30 @@ test('reutiliza os campos lunch_start e lunch_end do schema existente', () => {
   }, '2026-07-27');
   assert.equal(schedule.break_start, '12:00');
   assert.equal(schedule.break_end, '13:00');
+});
+
+test('valida a pausa individual dentro do expediente semanal', () => {
+  const validWeek = Array.from({ length: 7 }, () => ({
+    open: true,
+    start: '09:00',
+    end: '19:00',
+    break_start: '12:00',
+    break_end: '13:00',
+  }));
+  assert.equal(
+    validateWeeklyScheduleValue(`SCHEDULE_JSON:${JSON.stringify(validWeek)}`),
+    null,
+  );
+  validWeek[1].break_end = '';
+  assert.equal(
+    validateWeeklyScheduleValue(`SCHEDULE_JSON:${JSON.stringify(validWeek)}`),
+    'Informe inicio e fim da pausa no dia 2',
+  );
+  validWeek[1].break_end = '20:00';
+  assert.equal(
+    validateWeeklyScheduleValue(`SCHEDULE_JSON:${JSON.stringify(validWeek)}`),
+    'Pausa invalida no dia 2',
+  );
 });
 
 test('valida expediente, intervalo, passado e datas reais', () => {

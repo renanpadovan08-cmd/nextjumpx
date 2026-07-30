@@ -51,6 +51,45 @@ export function weeklySchedule(barber) {
   return Array.from({ length: 7 }, (_, index) => fallbackSchedule(barber, index));
 }
 
+export function validateWeeklyScheduleValue(value) {
+  const raw = String(value || '');
+  if (!raw.startsWith(SCHEDULE_PREFIX)) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw.slice(SCHEDULE_PREFIX.length));
+  } catch (_) {
+    return 'Configuracao semanal invalida';
+  }
+  if (!Array.isArray(parsed) || parsed.length !== 7) {
+    return 'Informe os sete dias da semana';
+  }
+  for (let index = 0; index < parsed.length; index += 1) {
+    const day = parsed[index] || {};
+    if (day.open !== true) continue;
+    const start = toMinutes(day.start);
+    const end = toMinutes(day.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) {
+      return `Expediente invalido no dia ${index + 1}`;
+    }
+    const rawBreakStart = String(day.break_start || '').trim();
+    const rawBreakEnd = String(day.break_end || '').trim();
+    if (!rawBreakStart && !rawBreakEnd) continue;
+    if (!rawBreakStart || !rawBreakEnd) {
+      return `Informe inicio e fim da pausa no dia ${index + 1}`;
+    }
+    const breakStart = toMinutes(rawBreakStart);
+    const breakEnd = toMinutes(rawBreakEnd);
+    if (!Number.isFinite(breakStart)
+        || !Number.isFinite(breakEnd)
+        || breakStart >= breakEnd
+        || breakStart < start
+        || breakEnd > end) {
+      return `Pausa invalida no dia ${index + 1}`;
+    }
+  }
+  return null;
+}
+
 export function scheduleForDate(barber, date) {
   return weeklySchedule(barber)[dayIndex(date)] || fallbackSchedule(barber, dayIndex(date));
 }

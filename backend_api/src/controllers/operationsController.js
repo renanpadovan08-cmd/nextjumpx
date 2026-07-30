@@ -20,6 +20,7 @@ import {
   intervalsOverlap,
   scheduleForDate,
   toMinutes,
+  validateWeeklyScheduleValue,
 } from '../services/schedulePolicy.js';
 import { isInternalPayment } from '../services/servicePolicy.js';
 import {
@@ -737,13 +738,17 @@ export async function updateProfile(req, res) {
   res.json(await updateBarberProfile(req.user.id, patch));
 }
 
-export async function hours(req, res) {
-  const profile = await fetchBarberProfile(req.user.id);
-  const barbers = (await scopedBarbers(req)).filter((barber) =>
+async function configurableBarbers(req) {
+  return (await scopedBarbers(req)).filter((barber) =>
     !isAdminRole(req.user.role)
       || (req.user.shopId && barber.shop_id === req.user.shopId)
       || (!req.user.shopId && req.user.shopName
         && barber.shop_name === req.user.shopName));
+}
+
+export async function hours(req, res) {
+  const profile = await fetchBarberProfile(req.user.id);
+  const barbers = await configurableBarbers(req);
   const closures = barbers.length
     ? await queryAll(
       supabase.from('appointments')
@@ -767,24 +772,35 @@ export async function updateHours(req, res) {
   const validTime = (value) => value == null || value === '' || /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
   if (![patch.work_start, patch.work_end, patch.lunch_start, patch.lunch_end].every(validTime)) throw new HttpError(400, 'Horario invalido; use HH:MM');
   if (patch.work_start && patch.work_end && patch.work_start >= patch.work_end) throw new HttpError(400, 'O fim do expediente deve ser posterior ao inicio');
+  if (Boolean(patch.lunch_start) !== Boolean(patch.lunch_end)) {
+    throw new HttpError(400, 'Informe o inicio e o fim da pausa');
+  }
+  if (patch.lunch_start && patch.lunch_end
+      && (patch.lunch_start >= patch.lunch_end
+        || (patch.work_start && patch.lunch_start < patch.work_start)
+        || (patch.work_end && patch.lunch_end > patch.work_end))) {
+    throw new HttpError(400, 'A pausa deve ficar dentro do expediente');
+  }
+  const scheduleError = validateWeeklyScheduleValue(patch.off_days);
+  if (scheduleError) throw new HttpError(400, scheduleError);
+  const targetId = String(req.body.barberId || req.user.id);
+  const target = (await configurableBarbers(req))
+    .find((barber) => barber.id === targetId);
+  if (!target) {
+    throw new HttpError(403, 'Profissional fora da sua barbearia ou unidade');
+  }
 
   try {
-    let builder = supabase.from('barbers').update(patch);
-    if (req.user.shopId) builder = builder.eq('shop_id', req.user.shopId);
-    else if (req.user.shopName) builder = builder.eq('shop_name', req.user.shopName);
-    else builder = builder.eq('id', req.user.id);
-    await query(builder);
-    res.json(await fetchBarberProfile(req.user.id));
+    await query(supabase.from('barbers').update(patch).eq('id', target.id));
+    res.json(await fetchBarberProfile(target.id));
   } catch (error) {
     if (isLegacyProfileSchemaError(error.message)) {
       const legacyPatch = Object.fromEntries(Object.entries(patch).filter(([key]) => !['lunch_start', 'lunch_end', 'off_days'].includes(key)));
       if (!Object.keys(legacyPatch).length) throw new HttpError(400, 'Horas de intervalo nao sao compativeis com esta versao do banco de dados');
-      let legacyBuilder = supabase.from('barbers').update(legacyPatch);
-      if (req.user.shopId) legacyBuilder = legacyBuilder.eq('shop_id', req.user.shopId);
-      else if (req.user.shopName) legacyBuilder = legacyBuilder.eq('shop_name', req.user.shopName);
-      else legacyBuilder = legacyBuilder.eq('id', req.user.id);
-      await query(legacyBuilder);
-      res.json(await fetchBarberProfile(req.user.id));
+      await query(
+        supabase.from('barbers').update(legacyPatch).eq('id', target.id),
+      );
+      res.json(await fetchBarberProfile(target.id));
       return;
     }
     throw error;

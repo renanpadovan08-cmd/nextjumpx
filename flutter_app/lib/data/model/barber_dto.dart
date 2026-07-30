@@ -9,6 +9,8 @@ class BarberDto {
       this.commissionRate = 0,
       this.workStart = '08:00',
       this.workEnd = '20:00',
+      this.lunchStart = '',
+      this.lunchEnd = '',
       this.offDays = '',
       this.photoUrl = '',
       this.activationNote = ''});
@@ -21,6 +23,8 @@ class BarberDto {
   final double commissionRate;
   final String workStart;
   final String workEnd;
+  final String lunchStart;
+  final String lunchEnd;
   final String offDays;
   final String photoUrl;
   final String activationNote;
@@ -40,6 +44,8 @@ class BarberDto {
         commissionRate: (json['commission_rate'] as num?)?.toDouble() ?? 0,
         workStart: '${json['work_start'] ?? '08:00'}',
         workEnd: '${json['work_end'] ?? '20:00'}',
+        lunchStart: '${json['lunch_start'] ?? ''}',
+        lunchEnd: '${json['lunch_end'] ?? ''}',
         offDays: '${json['off_days'] ?? ''}',
         photoUrl: '${json['photo_url'] ?? ''}',
         activationNote: '${json['activation_note'] ?? ''}',
