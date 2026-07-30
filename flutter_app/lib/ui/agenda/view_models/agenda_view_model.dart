@@ -13,13 +13,21 @@ class AgendaViewModel extends ChangeNotifier {
   String? selectedBarberId;
   List<Map<String, dynamic>> lastAffectedByBlock = const [];
 
-  Future<void> load({String? barberId, String? date}) async {
+  Future<void> load({
+    String? barberId,
+    String? date,
+    bool allBarbers = false,
+  }) async {
     loading = true;
     error = null;
     notifyListeners();
     try {
       selectedDate = date ?? selectedDate;
-      if (barberId != null) selectedBarberId = barberId;
+      if (allBarbers) {
+        selectedBarberId = null;
+      } else if (barberId != null) {
+        selectedBarberId = barberId;
+      }
       items = await _repository.list(
         barberId: selectedBarberId,
         date: selectedDate,

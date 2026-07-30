@@ -35,7 +35,12 @@ class AgendaScreen extends StatefulWidget {
 }
 
 class _AgendaScreenState extends State<AgendaScreen> {
+  static const _allBarbersValue = '__all_barbers__';
+  static const _dateItemExtent = 80.0;
+  static const _pastDays = 365;
+  static const _futureDays = 1825;
   String? _selectedBarberId;
+  final ScrollController _dateScrollController = ScrollController();
   late final WhatsappTemplateStore _templateStore;
   late Map<String, String> _whatsTemplates;
 
@@ -51,6 +56,16 @@ class _AgendaScreenState extends State<AgendaScreen> {
     widget.catalog.addListener(_refresh);
     widget.barbers.addListener(_refresh);
     _initialize();
+    _scheduleInitialDateScroll();
+  }
+
+  void _scheduleInitialDateScroll() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_dateScrollController.hasClients) {
+        _dateScrollController.jumpTo(_pastDays * _dateItemExtent);
+      }
+    });
   }
 
   Future<void> _initialize() async {
@@ -64,14 +79,19 @@ class _AgendaScreenState extends State<AgendaScreen> {
       widget.viewModel.load(barberId: _selectedBarberId),
       widget.catalog.load(_selectedBarberId!),
     ]);
+    _scheduleInitialDateScroll();
   }
 
-  Future<void> _selectBarber(String id) async {
+  Future<void> _selectBarber(String? id) async {
     setState(() => _selectedBarberId = id);
-    await Future.wait([
-      widget.viewModel.load(barberId: id),
-      widget.catalog.load(id),
-    ]);
+    if (id == null) {
+      await widget.viewModel.load(allBarbers: true);
+    } else {
+      await Future.wait([
+        widget.viewModel.load(barberId: id),
+        widget.catalog.load(id),
+      ]);
+    }
   }
 
   @override
@@ -79,6 +99,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
     widget.viewModel.removeListener(_refresh);
     widget.catalog.removeListener(_refresh);
     widget.barbers.removeListener(_refresh);
+    _dateScrollController.dispose();
     super.dispose();
   }
 
@@ -134,15 +155,24 @@ class _AgendaScreenState extends State<AgendaScreen> {
             ZenCard(child: Text(widget.viewModel.error!)),
           if (widget.barbers.items.length > 1) ...[
             DropdownButtonFormField<String>(
-              initialValue: _selectedBarberId,
-              items: widget.barbers.items
-                  .map((barber) => DropdownMenuItem(
-                        value: barber.id,
-                        child: Text(barber.name),
-                      ))
-                  .toList(),
+              initialValue: _selectedBarberId ??
+                  (widget.user.isManager ? _allBarbersValue : null),
+              items: [
+                if (widget.user.isManager)
+                  const DropdownMenuItem(
+                    value: _allBarbersValue,
+                    child: Text('Todos os profissionais'),
+                  ),
+                ...widget.barbers.items.map(
+                  (barber) => DropdownMenuItem(
+                    value: barber.id,
+                    child: Text(barber.name),
+                  ),
+                ),
+              ],
               onChanged: (value) {
-                if (value != null) _selectBarber(value);
+                if (value == null) return;
+                _selectBarber(value == _allBarbersValue ? null : value);
               },
               decoration:
                   const InputDecoration(labelText: 'Agenda do profissional'),
@@ -168,43 +198,90 @@ class _AgendaScreenState extends State<AgendaScreen> {
   Widget _dateChips() {
     final selected = widget.viewModel.selectedDate;
     final now = DateTime.now();
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: List.generate(11, (index) {
-          final date = now.add(Duration(days: index - 3));
-          final iso = date.toIso8601String().substring(0, 10);
-          final selectedChip = iso == selected;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              labelPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              selected: selectedChip,
-              onSelected: (_) => widget.viewModel.setDate(iso),
-              selectedColor: ZenColors.green,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              backgroundColor: const Color(0xff0f1b26),
-              label: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(_dayShort(date.weekday),
-                      style: TextStyle(
-                          color: selectedChip ? Colors.black : ZenColors.muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 4),
-                  Text(date.day.toString().padLeft(2, '0'),
-                      style: TextStyle(
-                          color: selectedChip ? Colors.black : Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900)),
-                ],
+    final start = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: _pastDays));
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () => _scrollDates(-5),
+          icon: const Icon(Icons.chevron_left),
+          tooltip: 'Voltar datas',
+        ),
+        Expanded(
+          child: SizedBox(
+            height: 82,
+            child: Scrollbar(
+              controller: _dateScrollController,
+              thumbVisibility: true,
+              trackVisibility: true,
+              scrollbarOrientation: ScrollbarOrientation.bottom,
+              child: ListView.builder(
+                controller: _dateScrollController,
+                scrollDirection: Axis.horizontal,
+                itemExtent: _dateItemExtent,
+                itemCount: _pastDays + _futureDays + 1,
+                itemBuilder: (context, index) {
+                  final date = start.add(Duration(days: index));
+                  final iso = date.toIso8601String().substring(0, 10);
+                  final selectedChip = iso == selected;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      labelPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      selected: selectedChip,
+                      onSelected: (_) => widget.viewModel.setDate(iso),
+                      selectedColor: ZenColors.green,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      backgroundColor: const Color(0xff0f1b26),
+                      label: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_dayShort(date.weekday),
+                              style: TextStyle(
+                                  color: selectedChip
+                                      ? Colors.black
+                                      : ZenColors.muted,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900)),
+                          const SizedBox(height: 4),
+                          Text(date.day.toString().padLeft(2, '0'),
+                              style: TextStyle(
+                                  color: selectedChip
+                                      ? Colors.black
+                                      : Colors.white,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w900)),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
-          );
-        }),
-      ),
+          ),
+        ),
+        IconButton(
+          onPressed: () => _scrollDates(5),
+          icon: const Icon(Icons.chevron_right),
+          tooltip: 'Avançar datas',
+        ),
+      ],
+    );
+  }
+
+  void _scrollDates(int days) {
+    if (!_dateScrollController.hasClients) return;
+    final target = (_dateScrollController.offset + days * _dateItemExtent)
+        .clamp(
+          _dateScrollController.position.minScrollExtent,
+          _dateScrollController.position.maxScrollExtent,
+        )
+        .toDouble();
+    _dateScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOut,
     );
   }
 
@@ -1080,8 +1157,57 @@ class _AgendaScreenState extends State<AgendaScreen> {
     }
   }
 
+  Future<String?> _chooseBarberForNewAppointment() async {
+    if (_selectedBarberId != null) return _selectedBarberId;
+    if (widget.barbers.items.isEmpty) return null;
+    var selected = widget.barbers.items
+            .where((barber) => barber.id == widget.user.id)
+            .firstOrNull
+            ?.id ??
+        widget.barbers.items.first.id;
+    return showDialog<String>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialog) => AlertDialog(
+          title: const Text('Escolha o profissional'),
+          content: DropdownButtonFormField<String>(
+            initialValue: selected,
+            items: widget.barbers.items
+                .map(
+                  (barber) => DropdownMenuItem(
+                    value: barber.id,
+                    child: Text(barber.name),
+                  ),
+                )
+                .toList(),
+            onChanged: (value) => setDialog(() => selected = value ?? selected),
+            decoration: const InputDecoration(
+              labelText: 'Agenda do profissional',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, selected),
+              child: const Text('Continuar'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _create({String? initialTime}) async {
-    if (_selectedBarberId == null || widget.catalog.items.isEmpty) {
+    final targetBarberId = await _chooseBarberForNewAppointment();
+    if (targetBarberId == null) return;
+    if (widget.catalog.barberId != targetBarberId) {
+      await widget.catalog.load(targetBarberId);
+    }
+    if (!mounted) return;
+    if (widget.catalog.items.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Cadastre um profissional e ao menos um serviço.'),
@@ -1241,7 +1367,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
 
     try {
       await widget.viewModel.create({
-        'barberId': _selectedBarberId,
+        'barberId': targetBarberId,
         'serviceId': data['service'],
         'clientName': data['name'],
         'clientPhone': data['phone'],
