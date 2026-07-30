@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/app_config.dart';
 import '../../core/date_format.dart';
+import '../../core/decimal_parser.dart';
 import '../../routing/public_booking_route.dart';
 import '../../services/local_preferences.dart';
 import '../../services/whatsapp_templates.dart';
@@ -229,7 +230,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
       ? Map<String, dynamic>.from(widget.viewModel.data as Map)
       : <String, dynamic>{};
   String _money(dynamic value) =>
-      'R\$ ${((value as num?) ?? num.tryParse('$value') ?? 0).toStringAsFixed(2).replaceAll('.', ',')}';
+      'R\$ ${(parseDecimalValue(value) ?? 0).toStringAsFixed(2).replaceAll('.', ',')}';
 
   String get _cashSessionKey {
     final shop =
@@ -278,7 +279,12 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
         ),
       );
 
-  Widget _walletText(String name, String detail, String amount) =>
+  Widget _walletText(
+    String name,
+    String detail,
+    String amount, {
+    Color amountColor = ZenColors.green,
+  }) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(name,
             style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15)),
@@ -288,8 +294,8 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
         if (amount.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(amount,
-              style: const TextStyle(
-                  color: ZenColors.green,
+              style: TextStyle(
+                  color: amountColor,
                   fontSize: 18,
                   fontWeight: FontWeight.w900))
         ]
@@ -331,7 +337,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
         title: const Text('Corrigir valor a receber'),
         content: TextField(
           controller: amount,
-          keyboardType: TextInputType.number,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           decoration: const InputDecoration(labelText: 'Novo valor'),
         ),
         actions: [
@@ -340,7 +346,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
               child: const Text('Cancelar')),
           FilledButton(
               onPressed: () =>
-                  Navigator.pop(context, double.tryParse(amount.text)),
+                  Navigator.pop(context, parseDecimalValue(amount.text)),
               child: const Text('Salvar')),
         ],
       ),
@@ -1170,6 +1176,8 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                 '${entry['type'] == 'entrada' ? 'Entrada' : 'Saída'} • ${entry['description'] ?? ''}',
                 '${entry['entry_date'] ?? ''}',
                 _money(entry['amount']),
+                amountColor:
+                    entry['type'] == 'saida' ? ZenColors.red : ZenColors.green,
               ),
             ),
             if (entry['source'] == 'manual')
@@ -1278,10 +1286,7 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, {
-              'amount': double.tryParse(
-                    amount.text.replaceAll('R\$', '').replaceAll(',', '.'),
-                  ) ??
-                  -1,
+              'amount': parseDecimalValue(amount.text) ?? -1,
               'reason': reason.text.trim(),
             }),
             child: const Text('Salvar alteração'),
@@ -1322,7 +1327,10 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
                           const SizedBox(height: 10),
                           TextField(
                               controller: amount,
-                              keyboardType: TextInputType.number,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                decimal: true,
+                              ),
                               decoration:
                                   const InputDecoration(labelText: 'Valor')),
                           const SizedBox(height: 10),
@@ -1361,9 +1369,14 @@ class _ProModuleScreenState extends State<ProModuleScreen> {
     amount.dispose();
     reason.dispose();
     if (data == null || data['description']!.isEmpty) return;
+    final parsedAmount = parseDecimalValue(data['amount']);
+    if (parsedAmount == null || parsedAmount <= 0) {
+      if (mounted) _message('Informe um valor positivo, como 19,90.');
+      return;
+    }
     final ok = await widget.viewModel.createCashEntry({
       'description': data['description'],
-      'amount': double.tryParse(data['amount'] ?? '') ?? 0,
+      'amount': parsedAmount,
       'type': data['type'],
       'reason': data['reason'],
     });

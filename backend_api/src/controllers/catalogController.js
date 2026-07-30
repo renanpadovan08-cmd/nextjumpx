@@ -7,6 +7,7 @@ import {
 import { isInternalService } from '../services/servicePolicy.js';
 import { HttpError } from '../utils/httpError.js';
 import { filterBarbersBySelectedUnit } from '../services/unitScopeService.js';
+import { parseDecimal } from '../services/numberPolicy.js';
 import {
   executePage,
   pageOptions,
@@ -86,9 +87,10 @@ export async function createService(req, res) {
   if (!(await filterBarbersBySelectedUnit(req, [barber])).length) {
     throw new HttpError(403, 'Barbeiro fora da unidade selecionada');
   }
-  if (!Number.isFinite(Number(price)) || Number(price) < 0) throw new HttpError(400, 'Preco do servico invalido');
+  const parsedPrice = parseDecimal(price);
+  if (!Number.isFinite(parsedPrice) || parsedPrice < 0) throw new HttpError(400, 'Preco do servico invalido');
   if (!Number.isInteger(Number(duration)) || Number(duration) < 1 || Number(duration) > 1440) throw new HttpError(400, 'Duracao do servico invalida');
-  res.status(201).json(await query(supabase.from('services').insert({ barber_id: barberId, shop_id: barber.shop_id || req.user.shopId || null, name: name.trim(), price: Number(price), duration: Number(duration), icon_text: iconText || '', image_url: imageUrl || null, active: true }).select().single()));
+  res.status(201).json(await query(supabase.from('services').insert({ barber_id: barberId, shop_id: barber.shop_id || req.user.shopId || null, name: name.trim(), price: parsedPrice, duration: Number(duration), icon_text: iconText || '', image_url: imageUrl || null, active: true }).select().single()));
 }
 
 export async function updateService(req, res) {
@@ -96,7 +98,10 @@ export async function updateService(req, res) {
   const allowed = ['name', 'price', 'duration', 'icon_text', 'image_url', 'display_order'];
   const patch = Object.fromEntries(Object.entries(req.body).filter(([key]) => allowed.includes(key)));
   if (patch.name != null && !String(patch.name).trim()) throw new HttpError(400, 'Nome do servico e obrigatorio');
-  if (patch.price != null && (!Number.isFinite(Number(patch.price)) || Number(patch.price) < 0)) throw new HttpError(400, 'Preco do servico invalido');
+  if (patch.price != null) {
+    patch.price = parseDecimal(patch.price);
+    if (!Number.isFinite(patch.price) || patch.price < 0) throw new HttpError(400, 'Preco do servico invalido');
+  }
   if (patch.duration != null && (!Number.isInteger(Number(patch.duration)) || Number(patch.duration) < 1 || Number(patch.duration) > 1440)) throw new HttpError(400, 'Duracao do servico invalida');
   if (!Object.keys(patch).length) throw new HttpError(400, 'Nenhuma alteracao valida informada');
   res.json(await query(supabase.from('services').update(patch).eq('id', req.params.id).select().single()));

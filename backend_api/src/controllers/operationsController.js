@@ -23,6 +23,7 @@ import {
   validateWeeklyScheduleValue,
 } from '../services/schedulePolicy.js';
 import { isInternalPayment } from '../services/servicePolicy.js';
+import { parseDecimal } from '../services/numberPolicy.js';
 import {
   filterBarbersBySelectedUnit,
   selectedUnitId,
@@ -116,8 +117,9 @@ export async function walletAction(req, res) {
   else if (action === 'bonify') { patch.status = 'bonificado'; patch.received_amount = 0; patch.payment_note = note || 'Bonificado'; }
   else if (action === 'cancel') patch.status = 'cancelado';
   else if (action === 'adjust') {
-    if (!Number.isFinite(Number(amount)) || Number(amount) < 0) throw new HttpError(400, 'Informe um valor valido');
-    patch.received_amount = Number(amount);
+    const parsedAmount = parseDecimal(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) throw new HttpError(400, 'Informe um valor valido');
+    patch.received_amount = parsedAmount;
   } else if (action === 'remind') {
     const days = Number(reminderDays);
     if (!Number.isInteger(days) || days < 1 || days > 365) throw new HttpError(400, 'Informe de 1 a 365 dias para o lembrete');
@@ -495,9 +497,10 @@ export async function unlockCash(req, res) {
 
 export async function createCashEntry(req, res) {
   const { description, amount, type, reason = '' } = req.body;
+  const parsedAmount = parseDecimal(amount);
   if (!String(description || '').trim()
-      || !Number.isFinite(Number(amount))
-      || Number(amount) <= 0) {
+      || !Number.isFinite(parsedAmount)
+      || parsedAmount <= 0) {
     throw new HttpError(400, 'Informe descricao e valor positivo');
   }
   if (!['entrada', 'saida'].includes(type)) {
@@ -510,7 +513,7 @@ export async function createCashEntry(req, res) {
     type,
     source: 'manual',
     description: String(description).trim(),
-    amount: Number(amount),
+    amount: parsedAmount,
     reason: String(reason || '').trim(),
     created_by: req.user.id,
     created_by_name: req.user.name || '',
@@ -635,7 +638,7 @@ export async function updateCashReceipt(req, res) {
   if (!paidStatuses.includes(current.status)) {
     throw new HttpError(409, 'Somente recebimentos concluidos podem ser alterados');
   }
-  const amount = Number(req.body.amount);
+  const amount = parseDecimal(req.body.amount);
   const reason = String(req.body.reason || '').trim();
   if (!Number.isFinite(amount) || amount < 0) {
     throw new HttpError(400, 'Informe um valor valido');

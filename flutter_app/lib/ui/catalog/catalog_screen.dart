@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/decimal_parser.dart';
 import '../../data/model/auth_user_dto.dart';
 import '../../data/model/service_dto.dart';
 import '../barbers/view_models/barbers_view_model.dart';
@@ -143,7 +144,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
             ],
           );
           final price = Text(
-            'R\$ ${service.price.toStringAsFixed(2)}',
+            'R\$ ${service.price.toStringAsFixed(2).replaceAll('.', ',')}',
             style: const TextStyle(
               color: ZenColors.jade,
               fontWeight: FontWeight.w900,
@@ -267,7 +268,8 @@ class _CatalogScreenState extends State<CatalogScreen> {
               const SizedBox(height: 10),
               TextField(
                 controller: price,
-                keyboardType: TextInputType.number,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: const InputDecoration(labelText: 'Preço'),
               ),
               const SizedBox(height: 10),
@@ -328,10 +330,15 @@ class _CatalogScreenState extends State<CatalogScreen> {
     if (values == null || values['name']!.isEmpty) return;
 
     try {
+      final rawPrice = (values['price'] ?? '').toString().trim();
+      final parsedPrice = rawPrice.isEmpty ? 0.0 : parseDecimalValue(rawPrice);
+      if (parsedPrice == null || parsedPrice < 0) {
+        throw Exception('Informe um preço válido, como 19,90.');
+      }
       await widget.viewModel.create({
         'barberId': values['barberId'],
         'name': values['name'],
-        'price': double.tryParse(values['price'] ?? '') ?? 0,
+        'price': parsedPrice,
         'duration': int.tryParse(values['duration'] ?? '') ?? 30,
         'iconText': values['iconText'],
         'imageUrl': values['imageUrl'],
@@ -369,7 +376,8 @@ class _CatalogScreenState extends State<CatalogScreen> {
               const SizedBox(height: 10),
               TextField(
                   controller: price,
-                  keyboardType: TextInputType.number,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
                   decoration: const InputDecoration(labelText: 'Preço')),
               const SizedBox(height: 10),
               TextField(
@@ -412,9 +420,15 @@ class _CatalogScreenState extends State<CatalogScreen> {
     image.dispose();
     if (values == null || (values['name'] ?? '').isEmpty) return;
     try {
+      final rawPrice = (values['price'] ?? '').toString().trim();
+      final parsedPrice =
+          rawPrice.isEmpty ? service.price : parseDecimalValue(rawPrice);
+      if (parsedPrice == null || parsedPrice < 0) {
+        throw Exception('Informe um preço válido, como 19,90.');
+      }
       await widget.viewModel.update(service.id, {
         'name': values['name'],
-        'price': double.tryParse(values['price'] ?? '') ?? service.price,
+        'price': parsedPrice,
         'duration': int.tryParse(values['duration'] ?? '') ?? service.duration,
         'icon_text': values['iconText'],
         'image_url': values['imageUrl'],
