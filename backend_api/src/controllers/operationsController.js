@@ -9,6 +9,7 @@ import {
   isAdminRole,
   isRestrictedBarber,
   sameShop,
+  shopOwnerIdFromUser,
 } from '../services/accessService.js';
 import { HttpError } from '../utils/httpError.js';
 import {
@@ -1096,8 +1097,21 @@ async function updateBarberProfile(id, patch) {
   }
 }
 
+async function profileResponse(user) {
+  const profile = await fetchBarberProfile(user.id);
+  if (canManageShop(user)) {
+    const ownerId = shopOwnerIdFromUser(user);
+    if (ownerId && ownerId !== user.id) {
+      const shopOwner = await fetchBarberProfile(ownerId);
+      profile.photo_url = shopOwner.photo_url || '';
+      profile.background_url = shopOwner.background_url || '';
+    }
+  }
+  return profile;
+}
+
 export async function profile(req, res) {
-  res.json(await fetchBarberProfile(req.user.id));
+  res.json(await profileResponse(req.user));
 }
 
 export async function updateProfile(req, res) {
@@ -1123,7 +1137,20 @@ export async function updateProfile(req, res) {
     else builder = builder.eq('shop_name', req.user.shopName);
     await query(builder);
   }
-  res.json(await updateBarberProfile(req.user.id, patch));
+  if (canManageShop(req.user)) {
+    const shopBranding = {};
+    if (patch.photo_url != null) shopBranding.photo_url = patch.photo_url;
+    if (patch.background_url != null) shopBranding.background_url = patch.background_url;
+    delete patch.photo_url;
+    delete patch.background_url;
+    if (Object.keys(shopBranding).length) {
+      await updateBarberProfile(shopOwnerIdFromUser(req.user), shopBranding);
+    }
+  }
+  if (Object.keys(patch).length) {
+    await updateBarberProfile(req.user.id, patch);
+  }
+  res.json(await profileResponse(req.user));
 }
 
 async function configurableBarbers(req) {

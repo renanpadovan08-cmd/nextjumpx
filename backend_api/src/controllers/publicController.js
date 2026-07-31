@@ -34,6 +34,31 @@ async function activeBarber(id) {
   return publicBarber(barber);
 }
 
+async function fetchShopBranding(owner) {
+  const shopOwnerId = owner.shop_id || owner.id;
+  if (!shopOwnerId || shopOwnerId === owner.id) {
+    return {
+      logo_url: owner.photo_url || '',
+      background_url: owner.background_url || '',
+    };
+  }
+  try {
+    const shopOwner = await one(
+      supabase.from('barbers').select('photo_url,background_url').eq('id', shopOwnerId).in('access_status', ['ativo', 'active']),
+      'Dono da barbearia nao encontrado',
+    );
+    return {
+      logo_url: shopOwner.photo_url || '',
+      background_url: shopOwner.background_url || '',
+    };
+  } catch {
+    return {
+      logo_url: owner.photo_url || '',
+      background_url: owner.background_url || '',
+    };
+  }
+}
+
 export async function bookingContext(req, res) {
   const owner = publicBarber(await one(
     supabase.from('barbers').select(barberColumns).eq('login', req.params.login).in('access_status', ['ativo', 'active']),
@@ -50,7 +75,8 @@ export async function bookingContext(req, res) {
   const services = barbers.length
     ? publicServices(await query(supabase.from('services').select('*').in('barber_id', barbers.map((barber) => barber.id)).eq('active', true).order('display_order').order('created_at')))
     : [];
-  res.json({ owner, barbers, services });
+  const branding = await fetchShopBranding(owner);
+  res.json({ owner, barbers, services, ...branding });
 }
 
 export async function availability(req, res) {

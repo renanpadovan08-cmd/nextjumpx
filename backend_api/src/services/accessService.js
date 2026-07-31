@@ -48,6 +48,14 @@ export function sameShop(user, record) {
   return Boolean(user.shopName && record.shop_name === user.shopName);
 }
 
+export function shopOwnerIdFromRecord(record) {
+  return record?.shop_id || record?.id || null;
+}
+
+export function shopOwnerIdFromUser(user) {
+  return user?.shopId || user?.id || null;
+}
+
 export function assertShopAccess(user, barber) {
   if (isAdminRole(user.role)) return;
   if (!sameShop(user, barber) && barber.id !== user.id) {

@@ -242,7 +242,9 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
     final owner = data is Map && data['owner'] is Map
         ? Map<String, dynamic>.from(data['owner'] as Map)
         : const <String, dynamic>{};
-    final backgroundUrl = '${owner['background_url'] ?? ''}'.trim();
+    final backgroundUrl = data is Map
+        ? '${data['background_url'] ?? owner['background_url'] ?? ''}'.trim()
+        : '${owner['background_url'] ?? ''}'.trim();
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
@@ -312,7 +314,8 @@ class _PublicBookingScreenState extends State<PublicBookingScreen> {
 
   Widget _catalogHeader(dynamic data) {
     final owner = Map<String, dynamic>.from(data['owner'] as Map);
-    final logoUrl = '${owner['photo_url'] ?? ''}'.trim();
+    final logoUrl =
+        '${data['logo_url'] ?? owner['photo_url'] ?? ''}'.trim();
     return ZenCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
